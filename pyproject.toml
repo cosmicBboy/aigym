@@ -15,6 +15,7 @@ dependencies = [
     "gymnasium",
     "markdownify",
     "ollama",
+    "pydantic",
     "pygame",
 ]
 classifiers = [
