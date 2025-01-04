@@ -4,7 +4,7 @@ import json
 import urllib.parse
 from functools import partial
 
-from webworld.types import Action, Observation
+from webgym.types import Action, Observation
 
 
 SYSTEM_PROMPT = """You are a helpful assistant that finds a target web page

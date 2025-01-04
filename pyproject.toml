@@ -2,10 +2,10 @@
 requires = ["setuptools", "setuptools_scm"]
 
 [project]
-name = "webworld"
+name = "web-gym"
 dynamic = ["version"]
 authors = [{ name = "Niels Bantilan", email = "niels.bantilan@gmail.com" }]
-description = "An RL environment game engine for the web."
+description = "A set of RL environments for training LMs on the live web."
 license = { file = "LICENSE" }
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.8"
@@ -35,14 +35,14 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/hai-labs/webworld"
+Homepage = "https://github.com/hai-labs/web-gym"
 
 [tool.setuptools]
 include-package-data = true
 license-files = ["licenses/*.txt", "LICENSE"]
 
 [tool.setuptools.packages.find]
-include = ["webworld*"]
+include = ["webgym*"]
 
 [tool.setuptools_scm]
 

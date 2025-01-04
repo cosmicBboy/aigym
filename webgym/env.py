@@ -3,14 +3,14 @@
 from typing import Any
 
 import gymnasium as gym
-from webworld.spaces import Tokens, WebGraph
-from webworld.types import Action, InternalEnvState, Observation, WebPage
+from webgym.spaces import Tokens, WebGraph
+from webgym.types import Action, InternalEnvState, Observation, WebPage
 
 DEFAULT_TARGET = "https://en.wikipedia.org/wiki/Dog"
 
 
-class WebWorldEnv(gym.Env):
-    """WebWorld environment."""
+class WebGymEnv(gym.Env):
+    """WebGym environment."""
 
     metadata = {"render_modes": ["human", "ansi"]}
 

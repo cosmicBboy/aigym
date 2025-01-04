@@ -1,4 +1,4 @@
-"""Definition of spaces in WebWorld."""
+"""Definition of spaces in WebGym."""
 
 import re
 from functools import lru_cache
@@ -7,7 +7,7 @@ import gymnasium as gym
 import httpx
 from markdownify import markdownify as md
 
-from webworld.types import WebPage
+from webgym.types import WebPage
 
 
 RANDOM_URL = "https://en.wikipedia.org/wiki/Special:Random"

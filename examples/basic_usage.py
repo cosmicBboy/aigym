@@ -1,12 +1,12 @@
-"""Example usage of the WebWorld environment."""
+"""Example usage of the Web Gym environment."""
 
 import gymnasium as gym
-from webworld.env import WebWorldEnv
-from webworld.agent import WebAgent
+from webgym.env import WebGymEnv
+from webgym.agent import WebAgent
 
 
 def main():
-    env = WebWorldEnv(
+    env = WebGymEnv(
         start_url="https://en.wikipedia.org/wiki/Main_Page",
         web_graph_kwargs={
             "lines_per_chunk": 50,

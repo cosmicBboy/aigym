@@ -1,4 +1,4 @@
-"""Types for the WebWorld environment."""
+"""Types for the WebGym environment."""
 
 from typing import Literal
 
