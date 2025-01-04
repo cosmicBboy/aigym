@@ -1,4 +1,4 @@
-# Web Gym
+# Web Gymnasium
 
 *The Web as RL environments for LM training*
 

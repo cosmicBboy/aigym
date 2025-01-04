@@ -2,7 +2,7 @@
 requires = ["setuptools", "setuptools_scm"]
 
 [project]
-name = "web-gym"
+name = "webgymnasium"
 dynamic = ["version"]
 authors = [{ name = "Niels Bantilan", email = "niels.bantilan@gmail.com" }]
 description = "A set of RL environments for training LMs on the live web."
@@ -35,7 +35,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/hai-labs/web-gym"
+Homepage = "https://github.com/hai-labs/webgymnasium"
 
 [tool.setuptools]
 include-package-data = true
