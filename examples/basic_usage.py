@@ -20,7 +20,7 @@ def main():
 
     for _ in range(20):
         action = agent.act(observation)
-        print(action)
+        print(f"action: {action}")
         observation, reward, terminated, truncated, info = env.step(action)
         if terminated or truncated:
             observation, info = env.reset()
