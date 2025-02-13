@@ -38,7 +38,7 @@ class WebGymEnv(gym.Env):
         
         self._state = InternalEnvState()
 
-    def reset(self, seed: int | None = None, options: dict | None = None):
+    def reset(self, seed: int | None = None, options: dict | None = None) -> tuple[Observation, dict]:
         """Reset the environment."""
         current_web_page: WebPage = self.observation_space.sample()
 
@@ -51,18 +51,20 @@ class WebGymEnv(gym.Env):
         ]
 
         # TODO: reset target to another random page
-
+        _context = context
         observation = Observation(
             url=self._state.current_web_page.url,
             context=context,
             target=DEFAULT_TARGET,
+            current_chunk=self._state.current_chunk_index + 1,
+            total_chunks=len(self._state.current_web_page.content_chunks),
         )
         # TODO: implement info as the distance (definition TBD) to the target text
         info = {}
         # replace more than 2 newlines with a single newline
         return observation, info
 
-    def step(self, action: Action):
+    def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
         """Take a step in the environment."""
         if action.action == "back":
             self._state.current_chunk_index = max(
@@ -86,6 +88,8 @@ class WebGymEnv(gym.Env):
             url=self._state.current_web_page.url,
             context=context,
             target=DEFAULT_TARGET,
+            current_chunk=self._state.current_chunk_index + 1,
+            total_chunks=len(self._state.current_web_page.content_chunks),
         )
         terminated = self._state.current_web_page.url == DEFAULT_TARGET
         # alternatively, this would be distance to the target, but that would

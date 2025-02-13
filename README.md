@@ -12,8 +12,36 @@ game.
 
 ## Development Installation
 
+Install `uv`:
+
 ```bash
-pip install .
+pip install uv
+```
+
+Create a virtual environment:
+
+```bash
+uv venv
+```
+
+Activate the virtual environment:
+
+```bash
+source .venv/bin/activate
+```
+
+Install the package:
+
+```bash
+uv pip install .
 ```
 
 Install `ollama` to run a local model: https://ollama.com/download
+
+## Usage
+
+Run the basic example:
+
+```bash
+python examples/basic_usage.py
+```

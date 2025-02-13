@@ -8,9 +8,10 @@ from pydantic import BaseModel, field_validator
 class Action(BaseModel):
     """An action taken by the agent."""
 
-    reasoning: str
+    reason_summary: str
     action: Literal["visit_url", "back", "forward"]
     url: str | None = None
+    reasoning_trace: str
 
     @field_validator("url")
     def validate_url(cls, v: str | None) -> str | None:
@@ -32,6 +33,8 @@ class Observation(BaseModel):
     url: str
     context: str
     target: str
+    current_chunk: int
+    total_chunks: int
 
 
 class InternalEnvState(BaseModel):

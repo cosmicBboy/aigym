@@ -6,7 +6,7 @@ from functools import lru_cache
 import gymnasium as gym
 import httpx
 from markdownify import markdownify as md
-
+from bs4 import BeautifulSoup
 from webgym.types import WebPage
 
 
@@ -56,12 +56,11 @@ class WebGraph(gym.Space[WebPage]):
 
     def visit_url(self, url: str):
         response = self.session.get(url, follow_redirects=True)
-        # TODO: figure out how to select the main content of the page (exclude)
-        # sidebar navigational elements, etc. Perhaps this can be done with
-        # a function/subclass that uses beautifulsoup to select the main
-        # content of the page.
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        content = soup.find(id="bodyContent")
         if self.text_format == "markdown":
-            content = re.sub(r"\n+", "\n\n", md(response.text))
+            content = re.sub(r"\n+", "\n", md(str(content)))
         else:
             raise ValueError(f"Text format '{self.text_format}' is not supported")
         content_chunks = chunk_web_page(
