@@ -1,9 +1,10 @@
 """Environment for navigating the web."""
 
+import urllib.parse
 from typing import Any
 
 import gymnasium as gym
-from webgym.spaces import Tokens, WebGraph
+from webgym.spaces import Tokens, WebGraph, RANDOM_URL
 from webgym.types import Action, InternalEnvState, Observation, WebPage
 
 DEFAULT_TARGET = "https://en.wikipedia.org/wiki/Dog"
@@ -17,12 +18,16 @@ class WebGymEnv(gym.Env):
     def __init__(
         self,
         start_url: str | None = None,
+        target_url: str | None = None,
         tokenizer: Any | None = None,
         render_mode: str | None = None,
         web_graph_kwargs: dict | None = None,
     ):
         """Initialize the environment."""
         self.render_mode = render_mode
+
+        self.start_url = start_url
+        self.target_url = target_url
 
         self.observation_space: WebGraph = WebGraph(start_url=start_url, **web_graph_kwargs)
         self.action_space: Tokens = Tokens(tokenizer=tokenizer)
@@ -37,6 +42,14 @@ class WebGymEnv(gym.Env):
         self.clock = None
         
         self._state = InternalEnvState()
+        self._target_url = None
+
+
+    def reset_target(self):
+        self._target_url = (
+            self.target_url
+            or str(self.observation_space.session.get(RANDOM_URL, follow_redirects=True).url)
+        )
 
     def reset(self, seed: int | None = None, options: dict | None = None) -> tuple[Observation, dict]:
         """Reset the environment."""
@@ -50,12 +63,11 @@ class WebGymEnv(gym.Env):
             self._state.current_chunk_index
         ]
 
-        # TODO: reset target to another random page
-        _context = context
+        self.reset_target()
         observation = Observation(
             url=self._state.current_web_page.url,
             context=context,
-            target=DEFAULT_TARGET,
+            target=self._target_url,
             current_chunk=self._state.current_chunk_index + 1,
             total_chunks=len(self._state.current_web_page.content_chunks),
         )
@@ -63,6 +75,11 @@ class WebGymEnv(gym.Env):
         info = {}
         # replace more than 2 newlines with a single newline
         return observation, info
+    
+    def _current_page_is_target(self):
+        _current_url = urllib.parse.urlparse(self._state.current_web_page.url)
+        _target_url = urllib.parse.urlparse(self._target_url)
+        return _current_url.netloc == _target_url.netloc and _current_url.path == _target_url.path
 
     def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
         """Take a step in the environment."""
@@ -87,11 +104,11 @@ class WebGymEnv(gym.Env):
         observation = Observation(
             url=self._state.current_web_page.url,
             context=context,
-            target=DEFAULT_TARGET,
+            target=self._target_url,
             current_chunk=self._state.current_chunk_index + 1,
             total_chunks=len(self._state.current_web_page.content_chunks),
         )
-        terminated = self._state.current_web_page.url == DEFAULT_TARGET
+        terminated = self._current_page_is_target()
         # alternatively, this would be distance to the target, but that would
         # require a routine to do random walks on the web graph starting from
         # the target
