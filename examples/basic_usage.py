@@ -10,8 +10,9 @@ from rich.panel import Panel
 
 def main():
     env = WebGymEnv(
-        start_url="https://en.wikipedia.org/wiki/Mammal",
-        # start_url="https://en.wikipedia.org/wiki/Vertebrate",
+        # start_url="https://en.wikipedia.org/wiki/Mammal",
+        # start_url="https://en.wikipedia.org/wiki/Canidae",
+        start_url="https://en.wikipedia.org/wiki/Vertebrate",
         target_url="https://en.wikipedia.org/wiki/Dog",
         web_graph_kwargs={
             "lines_per_chunk": 100,
@@ -23,7 +24,7 @@ def main():
     agent = WebAgent(
         "deepseek-r1:14b",
         token_encoder=enc,
-        n_retries_per_action=100,
+        n_retries_per_action=5,
         url_boundaries=["https://en.wikipedia.org"],
     )
 

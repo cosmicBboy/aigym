@@ -28,22 +28,21 @@ If "visit_url" is specified, you should also provide a "url" to visit. For examp
 - {"reason_summary": "I'm not sure if I'm getting any closer to the target, so I'm going back to the previous page.", "action": "back", "url": null}
 - {"reason_summary": "I think I'm getting closer to the target, so I'm going forward to the next page.", "action": "forward", "url": null}
 
-
 # Instructions
 
-Use the '# Page position' information to determine if you should go back or forward.
-If you are on the 1st chunk, choosing "back" will not do anything, so avoid choosing "back" in this case.
-If you are on the Nth out of N chunks, choosing "forward" will not do anything, so avoid choosing "forward" in this case.
-IN AN UNORDERED LIST, EXPLICITLY WRITE OUT ALL OF THE URLS WITHIN THE <observation> TAG EMBEDDED IN THE MARKDOWN LINKS [link text](url).
-IF YOU SEE THE # Target URL WITHIN THE <observation> TAG, ALWAYS SELECT IT AS THE NEXT ACTION.
-FOR THE ACTION, SELECT "back", "forward", OR "visit_url" AND ONLY SELECT ONE URLS IN THE UNORDERED LIST OF URLS, YOU CANNOT SELECT THE # Target URL.
-PREFER TO EXPLORE THE CURRENT PAGE ("back" or "forward") INSTEAD OF VISITING A URL UNLESS YOU ARE CONFIDENT THAT THE URL GETS YOU CLOSER TO THE TARGET..
-DO NOT SELECT A URL USING ANY OF THE CONTENT IN THE <instructions> TAG OR UNDER THE "# Target URL:" SECTION.
-YOU CANNOT USE THE "# Target URL" TO DETERMINE WHAT TO DO NEXT.
-TRY TO MAKE INTERESTING AND CREATIVE CONNECTIONS BETWEEN THE CURRENT PAGE AND THE TARGET PAGE.
-The response MUST BE a JSON object on a single line with no additional text before or after.
-USE THE <previous_failed_attempt> CONTENTS TO AVOID REPEATING THE SAME MISTAKES.
-YOU MUST ONLY SELECT URLS IN THE BASE URL NETLOC SPECIFIC IN THE <url_boundaries> TAG.
+- Use the '# Page position' information to determine if you should go back or forward.
+- If you are on the 1 / N chunk, choosing "back" will not do anything, so avoid choosing "back" in this case.
+- If you are on the N / N chunks, choosing "forward" will not do anything, so avoid choosing "forward" in this case.
+- In a list, explicitly write out all of the urls within the <observation> tag embedded in the markdown links [link text](/link/url/path "title").
+- For the action, select "back", "forward", or "visit_url" and only select one urls in the unordered list of urls, you cannot select the "# target url".
+- If you see the "# target url" within the <observation> tag, ALWAYS SELECT IT AS THE NEXT ACTION.
+- Prefer to explore the current page ("back" or "forward") instead of visiting a url unless you are confident that the url gets you closer to the target.
+- Do not select a url using any of the content in the <instructions> tag or under the "# Target URL:" section.
+- You cannot use the "# target url" to determine what to do next.
+- Try to make interesting and creative connections between the current page and the target page.
+- The response must be a json object on a single line with no additional text before or after.
+- Use the <previous_failed_attempt> contents to avoid repeating the same mistakes, e.g. if a url mentioned in there is caused the error, don't pick it again.
+- You must only select urls in the base url netloc specific in the <url_boundaries> tag.
 
 Example Prompt
 --------------
@@ -186,54 +185,54 @@ class WebAgent:
 
     def _parse_response(self, response: str, observation: Observation) -> Action:
         reasoning_trace, _response = response.split("</think>")
-        _response = _response.strip().replace("<think>", "")
+        _response = _response.strip().replace("<think>", "").strip()
 
-        for line in _response.split("\n"):
-            try:
-                action = json.loads(line)
+        if _response.startswith("```json"):
+            _response = _response.replace("```json", "").replace("```", "").strip()
 
-                if action.get("action") != "visit_url" and "url" not in action:
-                    action["url"] = None
-                
-                if action.get("action") == "visit_url" and action["url"] is None:
+        try:
+            action = json.loads(_response)
+
+            if action.get("action") != "visit_url" and "url" not in action:
+                action["url"] = None
+            
+            if action.get("action") == "visit_url" and action["url"] is None:
+                raise InvalidActionError(
+                    f"url is required for visit_url action, found None. "
+                    f"action: {action}"
+                )
+            
+            _url = urllib.parse.urlparse(observation.url)
+
+            if self.url_boundaries is not None:
+                _url_boundary_netlocs = frozenset(
+                    [
+                        urllib.parse.urlparse(url_boundary).netloc
+                        for url_boundary in self.url_boundaries
+                    ]
+                )
+                if _url.netloc not in _url_boundary_netlocs:
                     raise InvalidActionError(
-                        f"url is required for visit_url action, found None. "
-                        f"action: {action}"
-                    )
-                
-                _url = urllib.parse.urlparse(observation.url)
-
-                if self.url_boundaries is not None:
-                    _url_boundary_netlocs = frozenset(
-                        [
-                            urllib.parse.urlparse(url_boundary).netloc
-                            for url_boundary in self.url_boundaries
-                        ]
-                    )
-                    if _url.netloc not in _url_boundary_netlocs:
-                        raise InvalidActionError(
-                            f"url {action['url']} is not in the url boundaries {self.url_boundaries}. "
-                            f"action: {action}"
-                        )
-
-                # make sure url is a valid url
-                if action["url"] and not action["url"].startswith("http"):
-                    action["url"] = urllib.parse.urljoin(
-                        f"{_url.scheme}://{_url.netloc}", action["url"]
-                    )
-
-                if (
-                    action["url"]
-                    and action["url"] not in observation.context
-                    and urllib.parse.urlparse(action["url"]).path not in observation.context
-                ):
-                    raise InvalidActionError(
-                        f"url {action['url']} is not in the context. "
+                        f"url {action['url']} is not in the url boundaries {self.url_boundaries}. "
                         f"action: {action}"
                     )
 
-                return Action(**action, reasoning_trace=reasoning_trace)
-            except json.JSONDecodeError:
-                continue
+            # make sure url is a valid url
+            if action["url"] and not action["url"].startswith("http"):
+                action["url"] = urllib.parse.urljoin(
+                    f"{_url.scheme}://{_url.netloc}", action["url"]
+                )
 
-        raise InvalidActionError("Could not generate a valid action")
+            if (
+                action["url"]
+                and action["url"] not in observation.context
+                and urllib.parse.urlparse(action["url"]).path not in observation.context
+            ):
+                raise InvalidActionError(
+                    f"url {action['url']} is not in the context. "
+                    f"action: {action}"
+                )
+
+            return Action(**action, reasoning_trace=reasoning_trace)
+        except json.JSONDecodeError as exc:
+            raise InvalidActionError("Could not generate a valid action") from exc
