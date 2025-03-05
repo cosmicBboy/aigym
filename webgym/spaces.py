@@ -5,10 +5,10 @@ from functools import lru_cache
 
 import gymnasium as gym
 import httpx
-from markdownify import markdownify as md
 from bs4 import BeautifulSoup
-from webgym.types import WebPage
+from markdownify import markdownify as md
 
+from webgym.types import WebPage
 
 RANDOM_URL = "https://en.wikipedia.org/wiki/Special:Random"
 
@@ -20,14 +20,14 @@ def chunk_web_page(
     overlap: int,
 ) -> list[str]:
     """Chunk a web page into smaller chunks.
-    
+
     The chunking method implemented below is newline chunking using a sliding
     window.
     """
     lines = content.split("\n")
     chunks = []
     for i in range(0, len(lines), lines_per_chunk - overlap):
-        chunks.append("\n".join(lines[i:i + lines_per_chunk]))
+        chunks.append("\n".join(lines[i : i + lines_per_chunk]))
     return chunks
 
 

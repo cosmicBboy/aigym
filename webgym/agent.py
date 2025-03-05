@@ -11,7 +11,6 @@ from rich.panel import Panel
 
 from webgym.types import Action, Observation
 
-
 SYSTEM_PROMPT = """You are a helpful assistant that finds a target web page
 starting from a random web page. Given an OBSERVATION (a Context and Target),
 you generate an action that can be three types: "url", "back", or "forward".
@@ -117,7 +116,6 @@ class InvalidActionError(Exception):
 
 
 class WebAgent:
-
     def __init__(
         self,
         model_name: str,
@@ -158,8 +156,8 @@ class WebAgent:
             )
             prompt_token_length = len(self.token_encoder.encode(prompt))
             rprint(Panel.fit(f"Prompt token length: {prompt_token_length}", border_style="violet"))
-            rprint(Panel.fit(f"Attempt #{i+1} / {self.n_retries_per_action}", border_style="purple"))
-            
+            rprint(Panel.fit(f"Attempt #{i + 1} / {self.n_retries_per_action}", border_style="purple"))
+
             stream = self.model(prompt=prompt)
             output = ""
 
@@ -168,15 +166,13 @@ class WebAgent:
                 output += chunk.response
 
             print("\n")
-            rprint(Panel.fit(f"End attempt", border_style="purple"))
+            rprint(Panel.fit("End attempt", border_style="purple"))
             try:
                 action = self._parse_response(output, observation)
                 break
             except (json.JSONDecodeError, InvalidActionError) as exc:
                 rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
-                previous_failed_attempt = PREVIOUS_FAILED_ATTEMPT_TEMPLATE.format(
-                    previous_failed_attempt=str(exc)
-                )
+                previous_failed_attempt = PREVIOUS_FAILED_ATTEMPT_TEMPLATE.format(previous_failed_attempt=str(exc))
                 continue
 
         if action is None:
@@ -195,43 +191,31 @@ class WebAgent:
 
             if action.get("action") != "visit_url" and "url" not in action:
                 action["url"] = None
-            
+
             if action.get("action") == "visit_url" and action["url"] is None:
-                raise InvalidActionError(
-                    f"url is required for visit_url action, found None. "
-                    f"action: {action}"
-                )
-            
+                raise InvalidActionError(f"url is required for visit_url action, found None. action: {action}")
+
             _url = urllib.parse.urlparse(observation.url)
 
             if self.url_boundaries is not None:
                 _url_boundary_netlocs = frozenset(
-                    [
-                        urllib.parse.urlparse(url_boundary).netloc
-                        for url_boundary in self.url_boundaries
-                    ]
+                    [urllib.parse.urlparse(url_boundary).netloc for url_boundary in self.url_boundaries]
                 )
                 if _url.netloc not in _url_boundary_netlocs:
                     raise InvalidActionError(
-                        f"url {action['url']} is not in the url boundaries {self.url_boundaries}. "
-                        f"action: {action}"
+                        f"url {action['url']} is not in the url boundaries {self.url_boundaries}. action: {action}"
                     )
 
             # make sure url is a valid url
             if action["url"] and not action["url"].startswith("http"):
-                action["url"] = urllib.parse.urljoin(
-                    f"{_url.scheme}://{_url.netloc}", action["url"]
-                )
+                action["url"] = urllib.parse.urljoin(f"{_url.scheme}://{_url.netloc}", action["url"])
 
             if (
                 action["url"]
                 and action["url"] not in observation.context
                 and urllib.parse.urlparse(action["url"]).path not in observation.context
             ):
-                raise InvalidActionError(
-                    f"url {action['url']} is not in the context. "
-                    f"action: {action}"
-                )
+                raise InvalidActionError(f"url {action['url']} is not in the context. action: {action}")
 
             return Action(**action, reasoning_trace=reasoning_trace)
         except json.JSONDecodeError as exc:

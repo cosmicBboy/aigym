@@ -1,11 +1,12 @@
 """Example usage of the Web Gym environment."""
 
 import tiktoken
+from rich import print as rprint
+from rich.panel import Panel
+
 import webgym.pprint as pprint
 from webgym.agent import WebAgent
 from webgym.env import WebGymEnv
-from rich import print as rprint
-from rich.panel import Panel
 
 
 def main():
@@ -17,7 +18,7 @@ def main():
         web_graph_kwargs={
             "lines_per_chunk": 100,
             "overlap": 0,
-        }
+        },
     )
 
     enc = tiktoken.get_encoding("cl100k_base")
@@ -38,8 +39,7 @@ def main():
         pprint.print_action(action)
         observation, reward, terminated, truncated, info = env.step(action)
         rprint(
-            f"Next observation: {observation.url}, "
-            f"position {observation.current_chunk} / {observation.total_chunks}"
+            f"Next observation: {observation.url}, position {observation.current_chunk} / {observation.total_chunks}"
         )
         if terminated or truncated:
             rprint(Panel.fit(f"Episode terminated or truncated at step {step}", border_style="spring_green3"))

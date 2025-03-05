@@ -4,7 +4,8 @@ import urllib.parse
 from typing import Any
 
 import gymnasium as gym
-from webgym.spaces import Tokens, WebGraph, RANDOM_URL
+
+from webgym.spaces import RANDOM_URL, Tokens, WebGraph
 from webgym.types import Action, InternalEnvState, Observation, WebPage
 
 DEFAULT_TARGET = "https://en.wikipedia.org/wiki/Dog"
@@ -40,15 +41,13 @@ class WebGymEnv(gym.Env):
         # human mode
         self.window = None
         self.clock = None
-        
+
         self._state = InternalEnvState()
         self._target_url = None
 
-
     def reset_target(self):
-        self._target_url = (
-            self.target_url
-            or str(self.observation_space.session.get(RANDOM_URL, follow_redirects=True).url)
+        self._target_url = self.target_url or str(
+            self.observation_space.session.get(RANDOM_URL, follow_redirects=True).url
         )
 
     def reset(self, seed: int | None = None, options: dict | None = None) -> tuple[Observation, dict]:
@@ -59,9 +58,7 @@ class WebGymEnv(gym.Env):
         self._state.current_web_page = current_web_page
         self._state.current_chunk_index = 0  # consider making this random
 
-        context = self._state.current_web_page.content_chunks[
-            self._state.current_chunk_index
-        ]
+        context = self._state.current_web_page.content_chunks[self._state.current_chunk_index]
 
         self.reset_target()
         observation = Observation(
@@ -75,7 +72,7 @@ class WebGymEnv(gym.Env):
         info = {}
         # replace more than 2 newlines with a single newline
         return observation, info
-    
+
     def _current_page_is_target(self):
         _current_url = urllib.parse.urlparse(self._state.current_web_page.url)
         _target_url = urllib.parse.urlparse(self._target_url)
@@ -84,9 +81,7 @@ class WebGymEnv(gym.Env):
     def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
         """Take a step in the environment."""
         if action.action == "back":
-            self._state.current_chunk_index = max(
-                0, self._state.current_chunk_index - 1
-            )
+            self._state.current_chunk_index = max(0, self._state.current_chunk_index - 1)
         elif action.action == "forward":
             self._state.current_chunk_index = min(
                 len(self._state.current_web_page.content_chunks) - 1,
@@ -97,10 +92,8 @@ class WebGymEnv(gym.Env):
             self._state.current_chunk_index = 0
         else:
             raise ValueError(f"invalid action: {action}")
-        
-        context = self._state.current_web_page.content_chunks[
-            self._state.current_chunk_index
-        ]
+
+        context = self._state.current_web_page.content_chunks[self._state.current_chunk_index]
         observation = Observation(
             url=self._state.current_web_page.url,
             context=context,
