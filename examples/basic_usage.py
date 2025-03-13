@@ -21,7 +21,7 @@ def main():
         start_url="https://en.wikipedia.org/wiki/Vertebrate",
         target_url="https://en.wikipedia.org/wiki/Dog",
         web_graph_kwargs={
-            "lines_per_chunk": 100,
+            "lines_per_chunk": 50,
             "overlap": 0,
         },
     )
