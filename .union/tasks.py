@@ -2,8 +2,9 @@
 
 from typing import Generator
 
-import ollama
+import client_streaming
 import tiktoken
+import union
 from rich import print as rprint
 from rich.panel import Panel
 
@@ -12,11 +13,13 @@ from webgym.agent import WebAgent
 from webgym.env import WebGymEnv
 
 
-def main():
+@union.task
+def wiki_link_search(endpoint_url: str):
     # other start urls:
     # https://en.wikipedia.org/wiki/Mammal
     # https://en.wikipedia.org/wiki/Canidae
     # https://en.wikipedia.org/wiki/Vertebrate
+
     env = WebGymEnv(
         start_url="https://en.wikipedia.org/wiki/Vertebrate",
         target_url="https://en.wikipedia.org/wiki/Dog",
@@ -29,13 +32,12 @@ def main():
     enc = tiktoken.get_encoding("cl100k_base")
 
     def generate_function(prompt: str) -> Generator[str, None, None]:
-        for chunk in ollama.generate(model="deepseek-r1:14b", prompt=prompt, stream=True):
-            yield chunk.response
+        yield from client_streaming.run(url=endpoint_url, message=prompt)
 
     agent = WebAgent(
         generate_function=generate_function,
         token_encoder=enc,
-        n_retries_per_action=5,
+        n_retries_per_action=10,
         url_boundaries=["https://en.wikipedia.org"],
     )
 
@@ -61,4 +63,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    wiki_link_search(endpoint_url="https://shy-violet-c90de.apps.serverless-1.us-east-2.s.union.ai")

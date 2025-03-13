@@ -59,6 +59,9 @@ class WebGraph(gym.Space[WebPage]):
 
         soup = BeautifulSoup(response.text, "html.parser")
         content = soup.find(id="bodyContent")
+        infobox = content.find(attrs={"class": "infobox"})
+        if infobox:
+            infobox.decompose()
         if self.text_format == "markdown":
             content = re.sub(r"\n+", "\n", md(str(content)))
         else:

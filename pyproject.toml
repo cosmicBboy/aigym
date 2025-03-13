@@ -37,6 +37,15 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "black",
+    "ruff",
+    "pytest",
+    "twine",
+]
+
+
 [project.urls]
 Homepage = "https://github.com/hai-labs/webgymnasium"
 

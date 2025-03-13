@@ -1,7 +1,8 @@
 # Project TODOs
 
 - [X] create basic ollama-based LLM agent
-- [ ] observations should be web page chunks
+- [X] observations should be web page chunks
+- [ ] look into breaking down agent prompts into multiple steps
 - [ ] env should select a target page and random walk n pages away
 - [ ] reward signal: -1 if not if current state is not at target
 - [ ] handle cases where action url are not valid links

@@ -2,7 +2,7 @@
 
 import json
 import urllib.parse
-from functools import partial
+from typing import Callable, Generator
 
 import rich.markup
 import tiktoken
@@ -12,11 +12,11 @@ from rich.panel import Panel
 from webgym.types import Action, Observation
 
 SYSTEM_PROMPT = """You are a helpful assistant that finds a target web page
-starting from a random web page. Given an OBSERVATION (a Context and Target),
-you generate an action that can be three types: "url", "back", or "forward".
+starting from a random web page. Given an <observation>,
+you generate an action that can be three types: "url", "backward", or "forward".
 
 - "reason_summary": a summary of the reasoning that led to the action
-- "action": "back" to go to the previous page, "forward" to go to the next page, or "visit_url" to visit a URL in the Context
+- "action": "backward" to go to the previous page, "forward" to go to the next page, or "visit_url" to visit a URL in the Context
 - "url": the URL to visit if "visit_url" is specified. This can be null.
 
 If "visit_url" is specified, you should also provide a "url" to visit. For example:
@@ -24,24 +24,26 @@ If "visit_url" is specified, you should also provide a "url" to visit. For examp
 # Valid Action Examples:
 
 - {"reason_summary": "I am so far from the target that I'm better off exploring.", "action": "visit_url", "url": "..."}
-- {"reason_summary": "I'm not sure if I'm getting any closer to the target, so I'm going back to the previous page.", "action": "back", "url": null}
+- {"reason_summary": "I'm not sure if I'm getting any closer to the target, so I'm going backward to the previous page.", "action": "backward", "url": null}
 - {"reason_summary": "I think I'm getting closer to the target, so I'm going forward to the next page.", "action": "forward", "url": null}
 
 # Instructions
 
-- Use the '# Page position' information to determine if you should go back or forward.
-- If you are on the 1 / N chunk, choosing "back" will not do anything, so avoid choosing "back" in this case.
-- If you are on the N / N chunks, choosing "forward" will not do anything, so avoid choosing "forward" in this case.
 - In a list, explicitly write out all of the urls within the <observation> tag embedded in the markdown links [link text](/link/url/path "title").
-- For the action, select "back", "forward", or "visit_url" and only select one urls in the unordered list of urls, you cannot select the "# target url".
 - If you see the "# target url" within the <observation> tag, ALWAYS SELECT IT AS THE NEXT ACTION.
-- Prefer to explore the current page ("back" or "forward") instead of visiting a url unless you are confident that the url gets you closer to the target.
+- You cannot select the "# target url" as a url to visit UNLESS IT'S IN THE <observation> tag.
+- If you do not see the "# target url" in the <observation> tag, select a url that you think is closest to the target.
+- Avoid selecting the "# Current URL" as a url to visit, this will just loop you backward to the same page.
+- Use the '# Page position' information to determine if you should go backward or forward.
+- If you are on the 1 / N chunk, choosing "backward" will not do anything, so avoid choosing "backward" in this case.
+- If you are on the N / N chunks, choosing "forward" will not do anything, so avoid choosing "forward" in this case.
+- For the action, select "backward", "forward", or "visit_url" and only select one urls in the unordered list of urls, you cannot select the "# target url".
+- Prefer to explore the current page ("backward" or "forward") instead of visiting a url unless you are confident that the url gets you closer to the target.
 - Do not select a url using any of the content in the <instructions> tag or under the "# Target URL:" section.
-- You cannot use the "# target url" to determine what to do next.
 - Try to make interesting and creative connections between the current page and the target page.
 - The response must be a json object on a single line with no additional text before or after.
 - Use the <previous_failed_attempt> contents to avoid repeating the same mistakes, e.g. if a url mentioned in there is caused the error, don't pick it again.
-- You must only select urls in the base url netloc specific in the <url_boundaries> tag.
+- You must only select urls in the base url netloc specified in the <url_boundaries> tag.
 
 Example Prompt
 --------------
@@ -118,21 +120,15 @@ class InvalidActionError(Exception):
 class WebAgent:
     def __init__(
         self,
-        model_name: str,
+        generate_function: Callable[[str], Generator[str, None, None]],
         token_encoder: tiktoken.Encoding,
         n_retries_per_action: int = 30,
         url_boundaries: list[str] | None = None,
     ):
-        self.model_name = model_name
+        self.generate_function = generate_function
         self.token_encoder = token_encoder
         self.n_retries_per_action = n_retries_per_action
         self.url_boundaries = url_boundaries
-        self.init_model()
-
-    def init_model(self):
-        import ollama
-
-        self.model = partial(ollama.generate, model=self.model_name, stream=True)
 
     def act(self, observation: Observation) -> Action | None:
         observation_prompt = OBSERVATION_PROMPT.format(
@@ -158,12 +154,12 @@ class WebAgent:
             rprint(Panel.fit(f"Prompt token length: {prompt_token_length}", border_style="violet"))
             rprint(Panel.fit(f"Attempt #{i + 1} / {self.n_retries_per_action}", border_style="purple"))
 
-            stream = self.model(prompt=prompt)
+            stream = self.generate_function(prompt=prompt)
             output = ""
 
             for chunk in stream:
-                rprint(rich.markup.escape(chunk.response), end="")
-                output += chunk.response
+                rprint(rich.markup.escape(chunk), end="")
+                output += chunk
 
             print("\n")
             rprint(Panel.fit("End attempt", border_style="purple"))
