@@ -29,19 +29,22 @@ Example
 
 # Perception:
 
-[link text](/link/url/path "title") is about topic A. This is relevant to the current page because... I think this is relevent to the target url because...
+(/link/url/path1 "Path1 Title") is about ... This is relevant to the current page because... I think this is relevent to the target url because...
 
-[link text](/link/url/path "title") is about topic B. This is not relevant to the current page because... I think this is not relevent to the target url because...
+(/link/url/path2 "Path2 Title") is about ... This is not relevant to the current page because... I think this is not relevent to the target url because...
 
-[link text](/link/url/path "title") is about topic C. This is loosely relevant to the current page because... I think this is loosely relevent to the target url because...
+(/link/url/path3 "Path3 Title") is about ... This is loosely relevant to the current page because... I think this is loosely relevent to the target url because...
 
 # Instructions
 
+- ONLY SELECT LINKS THAT ARE IN THE <observation> TAG!
 - CAPTURE AS MANY LINKS AS POSSIBLE, EVEN IF THEY MAY HAVE A LOOSE RELATIONSHIP WITH THE <target_url>.
-- MAKE THE PERCEPTION TEXT AS LONG AND DETAILED AS POSSIBLE.
+- DO NOT REPEAT LINKS!
+- MAKE THE PERCEPTION TEXT AS DETAILED AS POSSIBLE.
 - IGNORE ANY LINKS THAT YOU ARE CONFIDENT ARE NOT RELEVANT TO THE <target_url>.
 - DO NOT MENTION THE <target_url> IN THE PERCEPTION TEXT UNDER ANY CIRCUMSTANCES. ONLY REFER TO IT AS "the target page".
 - MAKE SURE THE LINKS ARE ACCURATE AND CORRECTLY EXTRACTED FROM THE PAGE.
+- IGNORE ANY LINKS TO IMAGE, VIDEO, OR AUDIO FILES, E.G. ANY LINK THAT ENDS WITH .png, .jpg, .jpeg, .gif, .mp4, .mp3, etc.
 """
 
 
@@ -78,24 +81,6 @@ If "visit_url" is specified, you should also provide a "url" to visit. For examp
 - {"reason_summary": "I'm not sure if I'm getting any closer to the target, so I'm going backward to the previous page.", "action": "backward", "url": null}
 - {"reason_summary": "I think I'm getting closer to the target, so I'm going forward to the next page.", "action": "forward", "url": null}
 
-# Instructions
-
-- In a list, explicitly write out all of the urls within the <perception> tag embedded in the markdown links [link text](/link/url/path "title").
-- If you see the <target_url> within the <perception> tag, ALWAYS SELECT IT AS THE NEXT ACTION.
-- You cannot select the <target_url> as a url to visit UNLESS IT'S IN THE <perception> tag.
-- If you do not see the <target_url> in the <perception> tag, select a url that you think is closest to the target.
-- Avoid selecting the "# Current URL" as a url to visit, this will just loop you backward to the same page.
-- Use the '# Page position' information to determine if you should go backward or forward.
-- If you are on the 1 / N chunk, choosing "backward" will not do anything, so avoid choosing "backward" in this case.
-- If you are on the N / N chunks, choosing "forward" will not do anything, so avoid choosing "forward" in this case.
-- For the action, select "backward", "forward", or "visit_url" and only select one urls in the unordered list of urls, you cannot select the <target_url>.
-- Prefer to explore the current page ("backward" or "forward") instead of visiting a url unless you are confident that the url gets you closer to the target.
-- Do not select a url using any of the content in the <instructions> tag or under the <target_url> tag.
-- Try to make interesting and creative connections between the current page and the target page.
-- The response must be a json object on a single line with no additional text before or after.
-- Use the <previous_failed_attempt> contents to avoid repeating the same mistakes, e.g. if a url mentioned in there is caused the error, don't pick it again.
-- You must only select urls in the base url netloc specified in the <url_boundaries> tag.
-
 Example Prompt
 --------------
 
@@ -126,6 +111,23 @@ Example Prompt
 
 # Action:
 {"reason_summary": "...", "action": "visit_url", "url": "..."}
+
+
+# Instructions
+
+- If you see the <target_url> within the <perception> tag, ALWAYS SELECT IT AS THE NEXT ACTION.
+- You cannot select the <target_url> as a url to visit UNLESS IT'S IN THE <perception> tag.
+- If you do not see the <target_url> in the <perception> tag, select a url that you think is closest to the target.
+- Avoid selecting the "# Current URL" as a url to visit, this will just loop you backward to the same page.
+- Use the '# Page position' information to determine if you should go backward or forward.
+- If you are on the 1 / N chunk, choosing "backward" will not do anything, so avoid choosing "backward" in this case.
+- If you are on the N / N chunks, choosing "forward" will not do anything, so avoid choosing "forward" in this case.
+- For the action, select "backward", "forward", or "visit_url" and only select one urls in the unordered list of urls, you cannot select the <target_url>.
+- Do not select a url using any of the content in the <instructions> tag or under the <target_url> tag.
+- Try to make interesting and creative connections between the current page and the target page.
+- The response must be a json object on a single line with no additional text before or after.
+- Use the <previous_failed_attempt> contents to avoid repeating the same mistakes, e.g. if a url mentioned in there is caused the error, don't pick it again.
+- You must only select urls in the base url netloc specified in the <url_boundaries> tag.
 """
 
 ACTION_PROMPT_TEMPLATE = """

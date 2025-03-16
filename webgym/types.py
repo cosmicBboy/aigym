@@ -9,7 +9,7 @@ class Action(BaseModel):
     """An action taken by the agent."""
 
     reason_summary: str
-    action: Literal["visit_url", "back", "forward"]
+    action: Literal["visit_url", "backward", "forward"]
     url: str | None = None
     reasoning_trace: str
 

@@ -38,6 +38,12 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+openai = [
+    "openai",
+]
+google-genai = [
+    "google-genai",
+]
 dev = [
     "black",
     "ruff",
@@ -60,7 +66,7 @@ include = ["webgym*"]
 
 [tool.pytest.ini_options]
 log_cli = true
-log_cli_level = 20
+log_cli_level = "INFO"
 markers = []
 
 [tool.coverage.run]

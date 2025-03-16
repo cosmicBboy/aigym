@@ -54,8 +54,8 @@ class WebAgent:
     def act(self, observation: Observation) -> Action | None:
         _prompt_template = partial(
             prompts.ACTION_PROMPT_TEMPLATE.format,
-            system_prompt=prompts.ACTION_SYSTEM_PROMPT,
             perception=self.perceive(observation),
+            system_prompt=prompts.ACTION_SYSTEM_PROMPT,
             current_url=observation.url,
             current_chunk=observation.current_chunk,
             total_chunks=observation.total_chunks,
@@ -64,7 +64,6 @@ class WebAgent:
         )
 
         action = None
-        rprint(Panel.fit("Action stream", border_style="violet"))
 
         previous_failed_attempt: str = "None"
         for i in range(self.n_retries_per_action):
@@ -76,6 +75,7 @@ class WebAgent:
             stream = self.generate_function(prompt=prompt)
             output = ""
 
+            rprint(Panel.fit("Action stream", border_style="violet"))
             for chunk in stream:
                 rprint(rich.markup.escape(chunk), end="")
                 output += chunk
@@ -95,14 +95,19 @@ class WebAgent:
         return action
 
     def _parse_response(self, response: str, observation: Observation) -> Action:
-        reasoning_trace, _response = response.split("</think>")
-        _response = _response.strip().replace("<think>", "").strip()
+        if "</think>" in response:
+            reasoning_trace, _response = response.split("</think>")
+            _response = _response.strip().replace("<think>", "").strip()
+        else:
+            reasoning_trace = ""
+            _response = response.strip()
 
         if _response.startswith("```json"):
             _response = _response.replace("```json", "").replace("```", "").strip()
 
         try:
             action = json.loads(_response)
+            action = {k.lower(): v for k, v in action.items()}
 
             if action.get("action") != "visit_url" and "url" not in action:
                 action["url"] = None

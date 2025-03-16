@@ -1,9 +1,11 @@
 """Example usage of the Web Gym environment."""
 
+import os
 from typing import Generator
 
-import ollama
 import tiktoken
+from google import genai
+from google.genai import types
 from rich import print as rprint
 from rich.panel import Panel
 
@@ -18,25 +20,36 @@ def main():
     # https://en.wikipedia.org/wiki/Canidae
     # https://en.wikipedia.org/wiki/Vertebrate
     env = WebGymEnv(
-        # start_url="https://en.wikipedia.org/wiki/Vertebrate",
-        start_url="https://en.wikipedia.org/wiki/Mammal",
+        start_url="https://en.wikipedia.org/wiki/Vertebrate",
         target_url="https://en.wikipedia.org/wiki/Dog",
         web_graph_kwargs={
-            "lines_per_chunk": 50,
+            "lines_per_chunk": 10000,
             "overlap": 0,
         },
     )
 
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     enc = tiktoken.get_encoding("cl100k_base")
 
     def generate_function(prompt: str) -> Generator[str, None, None]:
-        for chunk in ollama.generate(model="deepseek-r1:14b", prompt=prompt, stream=True):
-            yield chunk.response
+        for chunk in client.models.generate_content_stream(
+            model="gemini-2.0-flash",
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                max_output_tokens=2000,
+                temperature=0.2,
+            ),
+        ):
+            delta = chunk.candidates[0].content.parts[0].text
+            if delta is None:
+                yield ""
+                break
+            yield delta
 
     agent = WebAgent(
         generate_function=generate_function,
         token_encoder=enc,
-        n_retries_per_action=20,
+        n_retries_per_action=10,
         url_boundaries=["https://en.wikipedia.org"],
     )
 

@@ -2,8 +2,8 @@
 
 from typing import Generator
 
-import ollama
 import tiktoken
+from openai import OpenAI
 from rich import print as rprint
 from rich.panel import Panel
 
@@ -18,25 +18,36 @@ def main():
     # https://en.wikipedia.org/wiki/Canidae
     # https://en.wikipedia.org/wiki/Vertebrate
     env = WebGymEnv(
-        # start_url="https://en.wikipedia.org/wiki/Vertebrate",
-        start_url="https://en.wikipedia.org/wiki/Mammal",
+        start_url="https://en.wikipedia.org/wiki/Vertebrate",
         target_url="https://en.wikipedia.org/wiki/Dog",
         web_graph_kwargs={
-            "lines_per_chunk": 50,
+            "lines_per_chunk": 100,
             "overlap": 0,
         },
     )
 
+    client = OpenAI()
+
     enc = tiktoken.get_encoding("cl100k_base")
 
     def generate_function(prompt: str) -> Generator[str, None, None]:
-        for chunk in ollama.generate(model="deepseek-r1:14b", prompt=prompt, stream=True):
-            yield chunk.response
+        for chunk in client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="gpt-4o-mini",
+            max_tokens=2000,
+            temperature=0.2,
+            stream=True,
+        ):
+            delta = chunk.choices[0].delta.content
+            if delta is None:
+                yield ""
+                break
+            yield delta
 
     agent = WebAgent(
         generate_function=generate_function,
         token_encoder=enc,
-        n_retries_per_action=20,
+        n_retries_per_action=10,
         url_boundaries=["https://en.wikipedia.org"],
     )
 
