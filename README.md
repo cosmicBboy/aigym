@@ -10,6 +10,8 @@ methods).
 on the web and exposes a few built-in games such as the **wikipedia navigation**
 game.
 
+See the project roadmap [here](./ROADMAP.md)
+
 ## Development Installation
 
 Install `uv`:
