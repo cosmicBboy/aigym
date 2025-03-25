@@ -11,23 +11,10 @@ from rich.panel import Panel
 
 import webgym.pprint as pprint
 from webgym.agent import WebAgent
-from webgym.env import WebGymEnv
+from webgym.env import WikipediaGymEnv
 
 
 def main():
-    # other start urls:
-    # https://en.wikipedia.org/wiki/Mammal
-    # https://en.wikipedia.org/wiki/Canidae
-    # https://en.wikipedia.org/wiki/Vertebrate
-    env = WebGymEnv(
-        start_url="https://en.wikipedia.org/wiki/Vertebrate",
-        target_url="https://en.wikipedia.org/wiki/Dog",
-        web_graph_kwargs={
-            "lines_per_chunk": 10000,
-            "overlap": 0,
-        },
-    )
-
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     enc = tiktoken.get_encoding("cl100k_base")
 
@@ -53,7 +40,12 @@ def main():
         url_boundaries=["https://en.wikipedia.org"],
     )
 
-    observation, info = env.reset(seed=42)
+    env = WikipediaGymEnv()
+    observation, info = env.reset_manual(
+        start_url="https://en.wikipedia.org/wiki/Mammal",
+        target_url="https://en.wikipedia.org/wiki/Dog",
+        travel_path=["https://en.wikipedia.org/wiki/Mammal", "https://en.wikipedia.org/wiki/Dog"],
+    )
     rprint(f"reset current page to: {observation.url}")
 
     for step in range(1, 101):

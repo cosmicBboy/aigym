@@ -9,28 +9,14 @@ from rich.panel import Panel
 
 import webgym.pprint as pprint
 from webgym.agent import WebAgent
-from webgym.env import WebGymEnv
+from webgym.env import WikipediaGymEnv
 
 
 def main():
-    # other start urls:
-    # https://en.wikipedia.org/wiki/Mammal
-    # https://en.wikipedia.org/wiki/Canidae
-    # https://en.wikipedia.org/wiki/Vertebrate
-    env = WebGymEnv(
-        # start_url="https://en.wikipedia.org/wiki/Vertebrate",
-        start_url="https://en.wikipedia.org/wiki/Mammal",
-        target_url="https://en.wikipedia.org/wiki/Dog",
-        web_graph_kwargs={
-            "lines_per_chunk": 50,
-            "overlap": 0,
-        },
-    )
-
     enc = tiktoken.get_encoding("cl100k_base")
 
     def generate_function(prompt: str) -> Generator[str, None, None]:
-        for chunk in ollama.generate(model="deepseek-r1:14b", prompt=prompt, stream=True):
+        for chunk in ollama.generate(model="deepseek-r1:7b", prompt=prompt, stream=True):
             yield chunk.response
 
     agent = WebAgent(
@@ -40,7 +26,12 @@ def main():
         url_boundaries=["https://en.wikipedia.org"],
     )
 
-    observation, info = env.reset(seed=42)
+    env = WikipediaGymEnv()
+    observation, info = env.reset_manual(
+        start_url="https://en.wikipedia.org/wiki/Mammal",
+        target_url="https://en.wikipedia.org/wiki/Dog",
+        travel_path=["https://en.wikipedia.org/wiki/Mammal", "https://en.wikipedia.org/wiki/Dog"],
+    )
     rprint(f"reset current page to: {observation.url}")
 
     for step in range(1, 101):

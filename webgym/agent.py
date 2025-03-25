@@ -35,7 +35,7 @@ class WebAgent:
         prompt = prompts.PERCEPTION_PROMPT_TEMPLATE.format(
             system_prompt=prompts.PERCEPTION_SYSTEM_PROMPT,
             observation=observation.context,
-            target=observation.target,
+            target_url=observation.target_url,
         )
         stream = self.generate_function(prompt=prompt)
         output = ""
@@ -59,7 +59,7 @@ class WebAgent:
             current_url=observation.url,
             current_chunk=observation.current_chunk,
             total_chunks=observation.total_chunks,
-            target=observation.target,
+            target_url=observation.target_url,
             url_boundaries=", ".join(self.url_boundaries) if self.url_boundaries else "NONE",
         )
 

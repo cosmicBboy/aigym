@@ -58,7 +58,7 @@ PERCEPTION_PROMPT_TEMPLATE = """
 </system>
 
 <target_url>
-{target}
+{target_url}
 </target_url>
 
 # Perception:
@@ -153,7 +153,7 @@ ACTION_PROMPT_TEMPLATE = """
 </previous_failed_attempt>
 
 <target_url>
-{target}
+{target_url}
 </target_url>
 
 # Action:

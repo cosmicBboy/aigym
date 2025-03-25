@@ -5,10 +5,8 @@ from typing import Any
 
 import gymnasium as gym
 
-from webgym.spaces import RANDOM_URL, Tokens, WebGraph
-from webgym.types import Action, InternalEnvState, Observation, WebPage
-
-DEFAULT_TARGET = "https://en.wikipedia.org/wiki/Dog"
+from webgym.spaces import Tokens, WebGraph, WikipediaGraph
+from webgym.types import Action, InternalEnvState, Observation
 
 
 class WebGymEnv(gym.Env):
@@ -18,41 +16,71 @@ class WebGymEnv(gym.Env):
 
     def __init__(
         self,
-        start_url: str | None = None,
-        target_url: str | None = None,
+        web_graph: WebGraph,
+        n_hops: int | None = None,
         tokenizer: Any | None = None,
         render_mode: str | None = None,
-        web_graph_kwargs: dict | None = None,
+        lines_per_chunk: int | None = None,
+        overlap: int | None = None,
     ):
-        """Initialize the environment."""
+        """Initialize the environment.
+
+        Args:
+            web_graph: The web graph to use for the environment.
+            n_hops: The start url will be sampled n_hops away from the target
+                page. For each hop, the search ensures that the page links
+                back to the previous page.
+            tokenizer: The tokenizer to use for the action space.
+            render_mode: The mode to render the environment in.
+            lines_per_chunk: The number of lines per page chunk to return.
+            overlap: The number of lines of overlap between chunks.
+        """
+        # this is a gym.Env attribute
         self.render_mode = render_mode
 
-        self.start_url = start_url
-        self.target_url = target_url
-
-        self.observation_space: WebGraph = WebGraph(start_url=start_url, **web_graph_kwargs)
+        # webgym-specific attributes
+        self.observation_space: WebGraph = web_graph
         self.action_space: Tokens = Tokens(tokenizer=tokenizer)
+        self.n_hops = n_hops
+        self.lines_per_chunk = lines_per_chunk
+        self.overlap = overlap
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
 
-        # initialize the window that will display the enviornment and the clock
+        # initialize the window that will display the environment and the clock
         # to ensure the environment is rendered at the correct framerate in
         # human mode
         self.window = None
         self.clock = None
 
         self._state = InternalEnvState()
-        self._target_url = None
 
-    def reset_target(self):
-        self._target_url = self.target_url or str(
-            self.observation_space.session.get(RANDOM_URL, follow_redirects=True).url
+    def _initialize_target_url(self, start_url: str, n_hops: int):
+        travel_path = [start_url]
+        _url = start_url
+        print(f"Initializing target url {n_hops} hops away from {start_url}")
+        for i in range(1, n_hops + 1):
+            next_url = self.observation_space.random_hop(
+                _url, set(travel_path + [urllib.parse.urlparse(x).path for x in travel_path])
+            )
+            travel_path.append(next_url)
+            _url = next_url
+            print(f"Hop {i} to {next_url}")
+        print(f"Target url: {_url}")
+        return _url, travel_path
+
+    def random_start(self):
+        self.start_url = str(
+            self.observation_space.session.get(self.observation_space.RANDOM_URL, follow_redirects=True).url
         )
 
-    def reset(self, seed: int | None = None, options: dict | None = None) -> tuple[Observation, dict]:
-        """Reset the environment."""
-        current_web_page: WebPage = self.observation_space.sample()
+    def _get_observation(self):
+        current_web_page = self.observation_space.get_page(
+            self.start_url,
+            self.lines_per_chunk,
+            self.overlap,
+        )
 
         # set new internal state
         self._state.current_web_page = current_web_page
@@ -60,22 +88,45 @@ class WebGymEnv(gym.Env):
 
         context = self._state.current_web_page.content_chunks[self._state.current_chunk_index]
 
-        self.reset_target()
         observation = Observation(
             url=self._state.current_web_page.url,
             context=context,
-            target=self._target_url,
+            target_url=self.target_url,
             current_chunk=self._state.current_chunk_index + 1,
             total_chunks=len(self._state.current_web_page.content_chunks),
         )
-        # TODO: implement info as the distance (definition TBD) to the target text
-        info = {}
-        # replace more than 2 newlines with a single newline
+        info = {"travel_path": self.travel_path}
         return observation, info
+
+    def reset_manual(
+        self,
+        start_url: str,
+        target_url: str,
+        travel_path: list[str],
+    ):
+        self.start_url = start_url
+        self.target_url = target_url
+        self.travel_path = travel_path
+        return self._get_observation()
+
+    def reset(
+        self,
+        start_url: str | None = None,
+        seed: int | None = None,
+        options: dict | None = None,
+    ) -> tuple[Observation, dict]:
+        """Reset the environment."""
+        if start_url is not None:
+            self.start_url = start_url
+        else:
+            self.random_start()
+
+        self.target_url, self.travel_path = self._initialize_target_url(self.start_url, self.n_hops)
+        return self._get_observation()
 
     def _current_page_is_target(self):
         _current_url = urllib.parse.urlparse(self._state.current_web_page.url)
-        _target_url = urllib.parse.urlparse(self._target_url)
+        _target_url = urllib.parse.urlparse(self.target_url)
         return _current_url.netloc == _target_url.netloc and _current_url.path == _target_url.path
 
     def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
@@ -88,7 +139,11 @@ class WebGymEnv(gym.Env):
                 self._state.current_chunk_index + 1,
             )
         elif action.action == "visit_url":
-            self._state.current_web_page = self.observation_space.visit_url(action.url)
+            self._state.current_web_page = self.observation_space.get_page(
+                action.url,
+                self.lines_per_chunk,
+                self.overlap,
+            )
             self._state.current_chunk_index = 0
         else:
             raise ValueError(f"invalid action: {action}")
@@ -97,7 +152,7 @@ class WebGymEnv(gym.Env):
         observation = Observation(
             url=self._state.current_web_page.url,
             context=context,
-            target=self._target_url,
+            target_url=self.target_url,
             current_chunk=self._state.current_chunk_index + 1,
             total_chunks=len(self._state.current_web_page.content_chunks),
         )
@@ -116,3 +171,14 @@ class WebGymEnv(gym.Env):
 
     def close(self):
         """Close the environment."""
+
+
+class WikipediaGymEnv(WebGymEnv):
+    """Wikipedia Gym environment."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(
+            WikipediaGraph(),
+            *args,
+            **kwargs,
+        )
