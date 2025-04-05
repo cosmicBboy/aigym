@@ -40,12 +40,8 @@ def main():
         url_boundaries=["https://en.wikipedia.org"],
     )
 
-    env = WikipediaGymEnv()
-    observation, info = env.reset_manual(
-        start_url="https://en.wikipedia.org/wiki/Mammal",
-        target_url="https://en.wikipedia.org/wiki/Dog",
-        travel_path=["https://en.wikipedia.org/wiki/Mammal", "https://en.wikipedia.org/wiki/Dog"],
-    )
+    env = WikipediaGymEnv(n_hops=3)
+    observation, info = env.reset()
     rprint(f"reset current page to: {observation.url}")
 
     for step in range(1, 101):
@@ -60,7 +56,6 @@ def main():
         if terminated or truncated:
             rprint(Panel.fit(f"Episode terminated or truncated at step {step}", border_style="spring_green3"))
             break
-            # observation, info = env.reset()
 
     rprint("Task finished!")
     env.close()
