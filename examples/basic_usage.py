@@ -46,7 +46,6 @@ def main():
         if terminated or truncated:
             rprint(Panel.fit(f"Episode terminated or truncated at step {step}", border_style="spring_green3"))
             break
-            # observation, info = env.reset()
 
     rprint("Task finished!")
     env.close()
