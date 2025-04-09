@@ -7,6 +7,7 @@
 - ✅ Observations should be web page chunks
 - ✅ Look into breaking down agent prompts into multiple steps: perception and action
 - ✅ Env should select a start url and find a target page via random walk n pages away
+- ☑️ Spec out the RL training setup
 - ☑️ Reward signal: -1 if not if current state is not at target
 - ☑️ Handle cases where action url are not valid links
 - ☑️ Implement single observation -> action -> reward loop
