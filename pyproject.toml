@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools", "setuptools_scm"]
+requires = ["setuptools>=61.0", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
 version_file = "aigym/_version.py"
@@ -68,8 +69,6 @@ license-files = ["licenses/*.txt", "LICENSE"]
 
 [tool.setuptools.packages.find]
 include = ["aigym*"]
-
-[tool.setuptools_scm]
 
 [tool.pytest.ini_options]
 log_cli = true
