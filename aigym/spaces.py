@@ -1,4 +1,4 @@
-"""Definition of spaces in WebGym."""
+"""Definition of spaces in AIGym."""
 
 import random
 import re
@@ -11,8 +11,8 @@ import httpx
 from bs4 import BeautifulSoup
 from markdownify import markdownify as md
 
-from webgym.exceptions import NoPathsFoundError
-from webgym.types import WebPage
+from aigym.exceptions import NoPathsFoundError
+from aigym.types import WebPage
 
 
 @lru_cache

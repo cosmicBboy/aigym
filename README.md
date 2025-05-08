@@ -1,14 +1,19 @@
-# Web Gymnasium
+# 🤖 AI Gym
 
-*The Web as RL environments for LM training*
+*Reinforcement learning environments for AI fine-tuning*
 
-This package contains constructs for converting the web into an RL environment
-where pre-trained language models can be fine-tuned via RL (PPO and other
-methods).
+`aigym` is a library that provides a suite of reinforcement learning (RL)
+environments primarily for the purpose of fine-tuning pre-trained models - namely
+language models - for various reasoning tasks.
 
-`web-gym` provides an interface for defining RL environments as mini-games
-on the web and exposes a few built-in games such as the **wikipedia navigation**
-game.
+Built on top of the [gymnasium](https://gymnasium.farama.org/) API, the objective
+of this project is to expose a light-weight and extensible environments
+to fine-tune language models with techniques like [PPO](https://arxiv.org/abs/1707.06347)
+and [GRPO](https://arxiv.org/abs/2402.03300).
+
+It is designed to complement training frameworks like [trl](https://huggingface.co/docs/trl/en/index),
+[transformers](https://huggingface.co/docs/transformers/en/index), [pytorch](https://pytorch.org/),
+and [pytorch lightning](https://lightning.ai/pytorch-lightning).
 
 See the project roadmap [here](./ROADMAP.md)
 
@@ -35,7 +40,7 @@ source .venv/bin/activate
 Install the package:
 
 ```bash
-uv pip install .
+uv sync --extra ollama
 ```
 
 Install `ollama` to run a local model: https://ollama.com/download

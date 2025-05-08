@@ -1,6 +1,6 @@
 """Example usage of the Web Gym environment."""
 
-from webgym.env import WikipediaGymEnv
+from aigym.env import WikipediaGymEnv
 
 
 def main():

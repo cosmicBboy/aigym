@@ -1,4 +1,4 @@
-"""Exceptions for the webgym package."""
+"""Exceptions for the aigym package."""
 
 
 class NoPathsFoundError(Exception):

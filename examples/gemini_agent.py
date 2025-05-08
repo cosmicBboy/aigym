@@ -10,9 +10,9 @@ from google.genai import types
 from rich import print as rprint
 from rich.panel import Panel
 
-import webgym.pprint as pprint
-from webgym.agent import WebAgent
-from webgym.env import WikipediaGymEnv
+import aigym.pprint as pprint
+from aigym.agent import WebAgent
+from aigym.env import WikipediaGymEnv
 
 
 def main():

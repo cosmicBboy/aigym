@@ -5,12 +5,12 @@ from typing import Any
 
 import gymnasium as gym
 
-from webgym.spaces import Tokens, WebGraph, WikipediaGraph
-from webgym.types import Action, InternalEnvState, Observation
+from aigym.spaces import Tokens, WebGraph, WikipediaGraph
+from aigym.types import Action, InternalEnvState, Observation
 
 
-class WebGymEnv(gym.Env):
-    """WebGym environment."""
+class Env(gym.Env):
+    """AIGym environment."""
 
     metadata = {"render_modes": ["human", "ansi"]}
 
@@ -38,7 +38,7 @@ class WebGymEnv(gym.Env):
         # this is a gym.Env attribute
         self.render_mode = render_mode
 
-        # webgym-specific attributes
+        # aigym-specific attributes
         self.observation_space: WebGraph = web_graph
         self.action_space: Tokens = Tokens(tokenizer=tokenizer)
         self.n_hops = n_hops
@@ -175,7 +175,7 @@ class WebGymEnv(gym.Env):
         """Close the environment."""
 
 
-class WikipediaGymEnv(WebGymEnv):
+class WikipediaGymEnv(Env):
     """Wikipedia Gym environment."""
 
     def __init__(self, *args, **kwargs):

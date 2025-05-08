@@ -2,10 +2,10 @@
 requires = ["setuptools", "setuptools_scm"]
 
 [project]
-name = "webgymnasium"
+name = "aigym"
 dynamic = ["version"]
 authors = [{ name = "Niels Bantilan", email = "niels.bantilan@gmail.com" }]
-description = "A set of RL environments for training LMs on the live web."
+description = "Reinforcement learning environments for fine-tuning language models for reasoning tasks."
 license = { file = "LICENSE" }
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.9"
@@ -15,7 +15,6 @@ dependencies = [
     "httpx",
     "gymnasium",
     "markdownify",
-    "ollama",
     "pydantic",
     "pygame",
     "python-dotenv",
@@ -38,6 +37,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+ollama = [
+    "ollama",
+]
 openai = [
     "openai",
 ]
@@ -53,14 +55,14 @@ dev = [
 
 
 [project.urls]
-Homepage = "https://github.com/hai-labs/webgymnasium"
+Homepage = "https://github.com/cosmicbboy/aigym"
 
 [tool.setuptools]
 include-package-data = true
 license-files = ["licenses/*.txt", "LICENSE"]
 
 [tool.setuptools.packages.find]
-include = ["webgym*"]
+include = ["aigym*"]
 
 [tool.setuptools_scm]
 

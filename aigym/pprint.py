@@ -4,7 +4,7 @@ import rich.markup
 from rich import print as rprint
 from rich.panel import Panel
 
-from webgym.types import Action, Observation
+from aigym.types import Action, Observation
 
 
 def print_observation(observation: Observation):

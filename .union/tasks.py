@@ -8,9 +8,9 @@ import union
 from rich import print as rprint
 from rich.panel import Panel
 
-import webgym.pprint as pprint
-from webgym.agent import WebAgent
-from webgym.env import WebGymEnv
+import aigym.pprint as pprint
+from aigym.agent import Agent
+from aigym.env import Env
 
 
 @union.task
@@ -20,7 +20,7 @@ def wiki_link_search(endpoint_url: str):
     # https://en.wikipedia.org/wiki/Canidae
     # https://en.wikipedia.org/wiki/Vertebrate
 
-    env = WebGymEnv(
+    env = Env(
         start_url="https://en.wikipedia.org/wiki/Vertebrate",
         target_url="https://en.wikipedia.org/wiki/Dog",
         web_graph_kwargs={
@@ -34,7 +34,7 @@ def wiki_link_search(endpoint_url: str):
     def generate_function(prompt: str) -> Generator[str, None, None]:
         yield from client_streaming.run(url=endpoint_url, message=prompt)
 
-    agent = WebAgent(
+    agent = Agent(
         generate_function=generate_function,
         token_encoder=enc,
         n_retries_per_action=10,

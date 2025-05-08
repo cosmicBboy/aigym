@@ -11,8 +11,8 @@ import tiktoken
 from rich import print as rprint
 from rich.panel import Panel
 
-import webgym.prompts as prompts
-from webgym.types import Action, Observation
+import aigym.prompts as prompts
+from aigym.types import Action, Observation
 
 
 class InvalidActionError(Exception):
