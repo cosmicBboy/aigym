@@ -127,11 +127,13 @@ class WebGymEnv(gym.Env):
     def _current_page_is_target(self):
         _current_url = urllib.parse.urlparse(self._state.current_web_page.url)
         _target_url = urllib.parse.urlparse(self.target_url)
-        return _current_url.netloc == _target_url.netloc and _current_url.path == _target_url.path
+        return _current_url.netloc == _target_url.netloc and (
+            _current_url.path == _target_url.path or _current_url.path.lower() == _target_url.path.lower()
+        )
 
     def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
         """Take a step in the environment."""
-        if action.action == "back":
+        if action.action == "backward":
             self._state.current_chunk_index = max(0, self._state.current_chunk_index - 1)
         elif action.action == "forward":
             self._state.current_chunk_index = min(

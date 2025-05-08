@@ -42,8 +42,8 @@ Install `ollama` to run a local model: https://ollama.com/download
 
 ## Usage
 
-Run the basic example:
+Run an ollama-based agent on the Wikipedia maze RL environment:
 
 ```bash
-python examples/basic_usage.py
+python examples/ollama_agent.py
 ```

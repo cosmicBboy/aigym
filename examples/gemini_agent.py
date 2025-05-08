@@ -3,6 +3,7 @@
 import os
 from typing import Generator
 
+import dotenv
 import tiktoken
 from google import genai
 from google.genai import types
@@ -15,6 +16,7 @@ from webgym.env import WikipediaGymEnv
 
 
 def main():
+    dotenv.load_dotenv()
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     enc = tiktoken.get_encoding("cl100k_base")
 
@@ -23,7 +25,7 @@ def main():
             model="gemini-2.0-flash",
             contents=[prompt],
             config=types.GenerateContentConfig(
-                max_output_tokens=2000,
+                max_output_tokens=5000,
                 temperature=0.2,
             ),
         ):
@@ -40,7 +42,7 @@ def main():
         url_boundaries=["https://en.wikipedia.org"],
     )
 
-    env = WikipediaGymEnv(n_hops=3)
+    env = WikipediaGymEnv(n_hops=3, lines_per_chunk=None)
     observation, info = env.reset()
     rprint(f"reset current page to: {observation.url}")
 

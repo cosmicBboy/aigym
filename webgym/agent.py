@@ -5,6 +5,7 @@ import urllib.parse
 from functools import partial
 from typing import Callable, Generator
 
+import httpx
 import rich.markup
 import tiktoken
 from rich import print as rprint
@@ -30,6 +31,7 @@ class WebAgent:
         self.token_encoder = token_encoder
         self.n_retries_per_action = n_retries_per_action
         self.url_boundaries = url_boundaries
+        self.session = httpx.Client()
 
     def perceive(self, observation: Observation) -> str:
         prompt = prompts.PERCEPTION_PROMPT_TEMPLATE.format(
@@ -53,9 +55,8 @@ class WebAgent:
 
     def act(self, observation: Observation) -> Action | None:
         _prompt_template = partial(
-            prompts.ACTION_PROMPT_TEMPLATE.format,
-            perception=self.perceive(observation),
-            system_prompt=prompts.ACTION_SYSTEM_PROMPT,
+            prompts.WIKIPEDEA_ACTION_TEMPLATE.format,
+            observation=observation.context,
             current_url=observation.url,
             current_chunk=observation.current_chunk,
             total_chunks=observation.total_chunks,
@@ -102,8 +103,18 @@ class WebAgent:
             reasoning_trace = ""
             _response = response.strip()
 
-        if _response.startswith("```json"):
-            _response = _response.replace("```json", "").replace("```", "").strip()
+        if _response.startswith("<answer>"):
+            _response = _response.replace("<answer>", "").strip()
+            _response = _response.replace("</answer>", "").strip()
+
+        if _response.startswith(("```json")):
+            _response = _response.replace("```json", "").replace("```", "").replace("json\n", "").strip()
+
+        if _response.startswith(("```xml")):
+            _response = _response.replace("```xml", "").replace("```", "").replace("xml\n", "").strip()
+
+        if _response.endswith("```"):
+            _response = _response.replace("```", "").strip()
 
         try:
             action = json.loads(_response)
@@ -130,13 +141,20 @@ class WebAgent:
             if action["url"] and not action["url"].startswith("http"):
                 action["url"] = urllib.parse.urljoin(f"{_url.scheme}://{_url.netloc}", action["url"])
 
-            if (
-                action["url"]
-                and action["url"] not in observation.context
-                and urllib.parse.urlparse(action["url"]).path not in observation.context
-            ):
+            if action["url"] and self._url_not_in_context(action["url"], observation.context):
                 raise InvalidActionError(f"url {action['url']} is not in the context. action: {action}")
 
             return Action(**action, reasoning_trace=reasoning_trace)
         except json.JSONDecodeError as exc:
             raise InvalidActionError("Could not generate a valid action") from exc
+
+    def _url_not_in_context(self, url: str, context: str) -> bool:
+        _url = urllib.parse.urlparse(url)
+        resolved_url = self.session.get(url, follow_redirects=True)
+        _resolved_url = urllib.parse.urlparse(str(resolved_url.url))
+        return (
+            _url.path not in context
+            and _url.path.lower() not in context.lower()
+            and _resolved_url.path not in context
+            and _resolved_url.path.lower() not in context.lower()
+        )

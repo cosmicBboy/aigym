@@ -13,6 +13,7 @@ def print_observation(observation: Observation):
             textwrap.dedent(
                 f"""
                 [bold]URL[/bold]: {observation.url}
+                [bold]Target URL[/bold]: {observation.target_url}
                 [bold]Current position[/bold]: {observation.current_chunk} / {observation.total_chunks}
                 """
             ),

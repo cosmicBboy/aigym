@@ -16,7 +16,14 @@ def main():
     enc = tiktoken.get_encoding("cl100k_base")
 
     def generate_function(prompt: str) -> Generator[str, None, None]:
-        for chunk in ollama.generate(model="deepseek-r1:7b", prompt=prompt, stream=True):
+        for chunk in ollama.generate(
+            model="gemma3:27b",
+            prompt=prompt,
+            stream=True,
+            options={
+                "temperature": 1.25,
+            },
+        ):
             yield chunk.response
 
     agent = WebAgent(
@@ -26,12 +33,8 @@ def main():
         url_boundaries=["https://en.wikipedia.org"],
     )
 
-    env = WikipediaGymEnv()
-    observation, info = env.reset_manual(
-        start_url="https://en.wikipedia.org/wiki/Mammal",
-        target_url="https://en.wikipedia.org/wiki/Dog",
-        travel_path=["https://en.wikipedia.org/wiki/Mammal", "https://en.wikipedia.org/wiki/Dog"],
-    )
+    env = WikipediaGymEnv(n_hops=2, lines_per_chunk=None)
+    observation, info = env.reset()
     rprint(f"reset current page to: {observation.url}")
 
     for step in range(1, 101):

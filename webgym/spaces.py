@@ -99,14 +99,14 @@ class WebGraph(gym.Space[WebPage]):
         content = soup.find(id=self.content_id)
         if content is None:
             raise ValueError(f"Content with id {self.content_id} not found")
-        if self.select_tags:
-            for tag in self.select_tags:
-                content = content.find_all(self.select_tags)
-                content = BeautifulSoup("".join([str(c) for c in content]), "html.parser")
+
         if self.remove_attrs:
             for attrs in self.remove_attrs:
                 for tag in content.find_all(attrs=attrs):
                     tag.decompose()
+        if self.select_tags:
+            content.find_all(self.select_tags)
+            content = BeautifulSoup("".join([str(c) for c in content]), "html.parser")
         return content
 
     def get_page(
@@ -147,13 +147,13 @@ class WikipediaGraph(WebGraph):
             *args,
             content_id="bodyContent",
             # only select main content
-            select_tags=["h1", "h2", "h3", "h4", "h5", "h6", "p"],
+            select_tags=["h1", "h2", "h3", "h4", "h5", "h6", "p", "ul", "table"],
             remove_attrs=[
                 # remove any metadata elements, including infoboxes,
                 # navboxes, and catlinks
-                {"class": "infobox"},
                 {"class": "navbox"},
                 {"class": "catlinks"},
+                {"class": "metadata"},
             ],
             **kwargs,
         )
