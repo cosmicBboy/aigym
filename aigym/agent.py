@@ -19,7 +19,7 @@ class InvalidActionError(Exception):
     """Exception raised when a valid action has not been generated."""
 
 
-class WebAgent:
+class Agent:
     def __init__(
         self,
         generate_function: Callable[[str], Generator[str, None, None]],

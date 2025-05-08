@@ -1,4 +1,4 @@
-"""Built-in prompts for the WebGym environment."""
+"""Built-in prompts for the aigym environment."""
 
 PERCEPTION_SYSTEM_PROMPT = """You are an expert web researcher that can identify
 links on a web page, summarize the relevant content within the page as it relates

@@ -8,7 +8,7 @@ from rich import print as rprint
 from rich.panel import Panel
 
 import aigym.pprint as pprint
-from aigym.agent import WebAgent
+from aigym.agent import Agent
 from aigym.env import WikipediaGymEnv
 
 
@@ -31,7 +31,7 @@ def main():
                 break
             yield delta
 
-    agent = WebAgent(
+    agent = Agent(
         generate_function=generate_function,
         token_encoder=enc,
         n_retries_per_action=10,

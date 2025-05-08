@@ -46,13 +46,15 @@ openai = [
 google-genai = [
     "google-genai",
 ]
+
+[dependency-groups]
 dev = [
+    "pre-commit",
     "black",
     "ruff",
     "pytest",
     "twine",
 ]
-
 
 [project.urls]
 Homepage = "https://github.com/cosmicbboy/aigym"
