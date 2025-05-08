@@ -1,5 +1,5 @@
 install-build:
-	pip install build
+	uv pip install build setuptools
 
 build-clean:
 	rm -rf dist/*

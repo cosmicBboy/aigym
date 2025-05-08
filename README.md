@@ -17,6 +17,12 @@ and [pytorch lightning](https://lightning.ai/pytorch-lightning).
 
 See the project roadmap [here](./ROADMAP.md)
 
+## Installation
+
+```bash
+pip install aigym
+```
+
 ## Development Installation
 
 Install `uv`:
@@ -40,14 +46,15 @@ source .venv/bin/activate
 Install the package:
 
 ```bash
-uv sync --extra ollama
+uv sync --extra ollama --group dev
 ```
 
 Install `ollama` to run a local model: https://ollama.com/download
 
 ## Usage
 
-Run an ollama-based agent on the Wikipedia maze RL environment:
+The `examples` directory contains examples on how to use the `aigym` environments.
+Run an ollama-based agent on the Wikipedia maze environment:
 
 ```bash
 python examples/ollama_agent.py
