@@ -5,7 +5,7 @@ build-clean:
 	rm -rf dist
 
 build: install-build build-clean
-	python setup.py sdist bdist_wheel
+	python -m build
 
 publish: build
 	twine upload dist/*
