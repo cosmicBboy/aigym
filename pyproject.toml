@@ -50,6 +50,11 @@ openai = [
 google-genai = [
     "google-genai",
 ]
+trl = [
+    "trl",
+    "torch>=2.7.0",
+    "numpy>2",
+]
 
 [dependency-groups]
 dev = [

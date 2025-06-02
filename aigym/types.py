@@ -32,6 +32,7 @@ class Observation(BaseModel):
 
     url: str
     context: str
+    next_url: str
     target_url: str
     current_chunk: int
     total_chunks: int

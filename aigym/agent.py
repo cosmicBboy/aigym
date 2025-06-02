@@ -73,7 +73,11 @@ class Agent:
             rprint(Panel.fit(f"Prompt token length: {prompt_token_length}", border_style="violet"))
             rprint(Panel.fit(f"Attempt #{i + 1} / {self.n_retries_per_action}", border_style="purple"))
 
-            stream = self.generate_function(prompt=prompt)
+            stream = self.generate_function(
+                prompt=prompt,
+                next_url=observation.next_url,
+                target_url=observation.target_url,
+            )
             output = ""
 
             rprint(Panel.fit("Action stream", border_style="violet"))
@@ -97,8 +101,9 @@ class Agent:
 
     def _parse_response(self, response: str, observation: Observation) -> Action:
         if "</think>" in response:
-            reasoning_trace, _response = response.split("</think>")
+            reasoning_trace, _response = response.split("</think>", maxsplit=1)
             _response = _response.strip().replace("<think>", "").strip()
+            _response = _response.replace("</think>", "").strip().replace("<tool_call>", "").strip()
         else:
             reasoning_trace = ""
             _response = response.strip()
@@ -113,8 +118,8 @@ class Agent:
         if _response.startswith(("```xml")):
             _response = _response.replace("```xml", "").replace("```", "").replace("xml\n", "").strip()
 
-        if _response.endswith("```"):
-            _response = _response.replace("```", "").strip()
+        if "```\n" in _response:
+            _response = _response.replace("```\n", "").strip()
 
         try:
             action = json.loads(_response)
@@ -136,7 +141,6 @@ class Agent:
                     raise InvalidActionError(
                         f"url {action['url']} is not in the url boundaries {self.url_boundaries}. action: {action}"
                     )
-
             # make sure url is a valid url
             if action["url"] and not action["url"].startswith("http"):
                 action["url"] = urllib.parse.urljoin(f"{_url.scheme}://{_url.netloc}", action["url"])

@@ -4,6 +4,7 @@ import urllib.parse
 from typing import Any
 
 import gymnasium as gym
+from rich import print as rprint
 
 from aigym.spaces import Tokens, WebGraph, WikipediaGraph
 from aigym.types import Action, InternalEnvState, Observation
@@ -44,6 +45,7 @@ class Env(gym.Env):
         self.n_hops = n_hops
         self.lines_per_chunk = lines_per_chunk
         self.overlap = overlap
+        self.travel_path = []
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
@@ -56,7 +58,14 @@ class Env(gym.Env):
 
         self._state = InternalEnvState()
 
-    def _initialize_target_url(self, start_url: str, n_hops: int):
+    @property
+    def travel_map(self) -> dict:
+        map = {}
+        for current_url, next_url in zip(self.travel_path[:-1], self.travel_path[1:]):
+            map[current_url] = next_url
+        return map
+
+    def _initialize_target_url(self, start_url: str, n_hops: int) -> tuple[str, list[str]]:
         travel_path = [start_url]
         _url = start_url
         print(f"Initializing target url {n_hops} hops away from {start_url}")
@@ -92,6 +101,7 @@ class Env(gym.Env):
             url=self._state.current_web_page.url,
             context=context,
             target_url=self.target_url,
+            next_url=self.travel_map[self._state.current_web_page.url],
             current_chunk=self._state.current_chunk_index + 1,
             total_chunks=len(self._state.current_web_page.content_chunks),
         )
@@ -122,7 +132,9 @@ class Env(gym.Env):
             self.random_start()
 
         self.target_url, self.travel_path = self._initialize_target_url(self.start_url, self.n_hops)
-        return self._get_observation()
+        observation, info = self._get_observation()
+        rprint(f"reset current page to: {observation.url}")
+        return observation, info
 
     def _current_page_is_target(self):
         _current_url = urllib.parse.urlparse(self._state.current_web_page.url)
@@ -155,6 +167,7 @@ class Env(gym.Env):
             url=self._state.current_web_page.url,
             context=context,
             target_url=self.target_url,
+            next_url=self.travel_map[self._state.current_web_page.url],
             current_chunk=self._state.current_chunk_index + 1,
             total_chunks=len(self._state.current_web_page.content_chunks),
         )
@@ -162,10 +175,13 @@ class Env(gym.Env):
         # alternatively, this would be distance to the target, but that would
         # require a routine to do random walks on the web graph starting from
         # the target
-        reward = 0 if terminated else -1
+        reward = 1 if terminated else 0
         truncated = False
         info = {}
 
+        rprint(
+            f"Next observation: {observation.url}, position {observation.current_chunk} / {observation.total_chunks}"
+        )
         return observation, reward, terminated, truncated, info
 
     def render(self):

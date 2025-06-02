@@ -154,7 +154,7 @@ ACTION_PROMPT_TEMPLATE = """
 # Action:
 """
 
-WIKIPEDEA_ACTION_TEMPLATE = """In the "Wikipedia Game", the Assistant finds
+WIKIPEDEA_ACTION_TEMPLATE = """In the "Wikipedia Maze", the Agent finds
 a target web page starting from a random web page.
 
 Here's critical information about the current state of the game:
@@ -205,6 +205,8 @@ The Assistant output MUST NOT mention the target web page explicitly in the
 MUST contain <think> </think> and <answer> </answer> tags.
 
 DO NOT pick the <current_url> as the url to visit.
+
+Output:
 """
 
 REASONING_TEMPLATE = """A conversation between User and Assistant. The user

@@ -8,7 +8,6 @@ import tiktoken
 from google import genai
 from google.genai import types
 from rich import print as rprint
-from rich.panel import Panel
 
 import aigym.pprint as pprint
 from aigym.agent import Agent
@@ -43,8 +42,16 @@ def main():
     )
 
     env = WikipediaGymEnv(n_hops=3, lines_per_chunk=None)
-    observation, info = env.reset()
-    rprint(f"reset current page to: {observation.url}")
+    # observation, info = env.reset()
+    observation, info = env.reset_manual(
+        start_url="https://en.wikipedia.org/wiki/Chenggong_Reservoir",
+        target_url="https://en.wikipedia.org/wiki/Traditional_Chinese_characters",
+        travel_path=[
+            "https://en.wikipedia.org/wiki/Chenggong_Reservoir",
+            "https://en.wikipedia.org/wiki/Water_Resources_Agency",
+            "https://en.wikipedia.org/wiki/Traditional_Chinese_characters",
+        ],
+    )
 
     for step in range(1, 101):
         pprint.print_observation(observation)
@@ -52,11 +59,8 @@ def main():
         action = agent.act(observation)
         pprint.print_action(action)
         observation, reward, terminated, truncated, info = env.step(action)
-        rprint(
-            f"Next observation: {observation.url}, position {observation.current_chunk} / {observation.total_chunks}"
-        )
         if terminated or truncated:
-            rprint(Panel.fit(f"Episode terminated or truncated at step {step}", border_style="spring_green3"))
+            rprint(f"Episode terminated or truncated at step {step}")
             break
 
     rprint("Task finished!")

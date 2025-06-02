@@ -5,7 +5,6 @@ from typing import Generator
 import tiktoken
 from openai import OpenAI
 from rich import print as rprint
-from rich.panel import Panel
 
 import aigym.pprint as pprint
 from aigym.agent import Agent
@@ -44,7 +43,6 @@ def main():
         target_url="https://en.wikipedia.org/wiki/Dog",
         travel_path=["https://en.wikipedia.org/wiki/Mammal", "https://en.wikipedia.org/wiki/Dog"],
     )
-    rprint(f"reset current page to: {observation.url}")
 
     for step in range(1, 101):
         pprint.print_observation(observation)
@@ -52,11 +50,8 @@ def main():
         action = agent.act(observation)
         pprint.print_action(action)
         observation, reward, terminated, truncated, info = env.step(action)
-        rprint(
-            f"Next observation: {observation.url}, position {observation.current_chunk} / {observation.total_chunks}"
-        )
         if terminated or truncated:
-            rprint(Panel.fit(f"Episode terminated or truncated at step {step}", border_style="spring_green3"))
+            rprint(f"Episode terminated or truncated at step {step}")
             break
 
     rprint("Task finished!")
