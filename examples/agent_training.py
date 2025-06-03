@@ -51,7 +51,13 @@ def main():
         target_url: str,
     ) -> Generator[str, None, None]:
         with torch.no_grad():
-            ...
+            model.generate(
+                prompt=prompt,
+                stream=True,
+                options={
+                    "temperature": 2.0,
+                },
+            )
             # input schema:
             # {prompt: str, completion: str}
             # completion labels are not used
