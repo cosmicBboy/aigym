@@ -38,6 +38,7 @@ from aigym.types import Action, ActionBatch, Observation, RolloutBatch
 
 @dataclass
 class TrainingArgs:
+    n_episodes: int = 10
     model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"
     optim: str = "adamw"
     lr: float = 1e-4
@@ -238,7 +239,7 @@ def update_policy(
 
     loss.backward()
     grad_norm = clip_grad_norm_(model.parameters(), max_norm=training_args.max_grad_norm)
-    print(f"kl={kl: .4f}, grad_norm={grad_norm: .4f}")
+    print(f"loss={loss: .4f}, kl={kl: .4f}, grad_norm={grad_norm: .4f}")
     optimizer.step()
     return model
 
@@ -334,61 +335,64 @@ def main(training_args: TrainingArgs):
 
     n_hops = 1
     env = WikipediaGymEnv(n_hops=n_hops, lines_per_chunk=None)
-    observation, info = env.reset()
     n_tries = int(n_hops * training_args.n_tries_per_hop)
 
-    print(f"Starting to train with {n_tries} steps")
-    print("Travel map:", env.travel_map)
-    print("Travel path:", env.travel_path)
-    previous_model = None
-    for step in range(1, n_tries):
-        print(f"step {step}")
-        pprint.print_observation(observation)
-        pprint.print_context(observation)
-        action_batch: ActionBatch = agent.act(observation)
+    for episode in range(training_args.n_episodes):
+        print(f"Starting episode {episode}")
+        observation, info = env.reset()
 
-        step_action: Action | None = None
-        rewards: list[float] = []
-        for i, action in enumerate(action_batch.actions):
-            reward = reward_function(action, observation)
-            rewards.append(reward)
-            pprint.print_action(action, index=i)
-            if action is None:
+        print(f"Starting to train with {n_tries} steps")
+        print("Travel map:", env.travel_map)
+        print("Travel path:", env.travel_path)
+        previous_model = None
+        for step in range(1, n_tries):
+            print(f"step {step}")
+            pprint.print_observation(observation)
+            pprint.print_context(observation)
+            action_batch: ActionBatch = agent.act(observation)
+
+            step_action: Action | None = None
+            rewards: list[float] = []
+            for i, action in enumerate(action_batch.actions):
+                reward = reward_function(action, observation)
+                rewards.append(reward)
+                pprint.print_action(action, index=i)
+                if action is None:
+                    continue
+                if action.url == observation.next_url:
+                    step_action = action
+
+            # save copy of the model for subsequent updates
+            model_copy = copy_model(model, base_model, lora_config)
+
+            if all(reward == 0 for reward in rewards):
+                print("All rewards are 0, skipping update")
                 continue
-            if action.url == observation.next_url:
-                step_action = action
 
-        # save copy of the model for subsequent updates
-        model_copy = copy_model(model, base_model, lora_config)
+            # update the model
+            model = update_policy(
+                optimizer,
+                tokenizer,
+                objective,
+                training_args,
+                model,
+                previous_model,
+                reference_model,
+                action_batch,
+                rewards,
+            )
+            print(f"step {step}, rewards: {rewards}")
 
-        if all(reward == 0 for reward in rewards):
-            print("All rewards are 0, skipping update")
-            continue
+            # set previous model for the next update
+            previous_model = model_copy
 
-        # update the model
-        model = update_policy(
-            optimizer,
-            tokenizer,
-            objective,
-            training_args,
-            model,
-            previous_model,
-            reference_model,
-            action_batch,
-            rewards,
-        )
-        print(f"step {step}, rewards: {rewards}")
-
-        # set previous model for the next update
-        previous_model = model_copy
-
-        if step_action is not None:
-            # If the action batch contains at least one item with the correct
-            # next-page target, take a step. Otherwise, don't change the state.
-            observation, env_reward, terminated, truncated, info = env.step(step_action)
-            if terminated or truncated:
-                rprint(f"Episode terminated or truncated at step {step}")
-                break
+            if step_action is not None:
+                # If the action batch contains at least one item with the correct
+                # next-page target, take a step. Otherwise, don't change the state.
+                observation, env_reward, terminated, truncated, info = env.step(step_action)
+                if terminated or truncated:
+                    rprint(f"Episode terminated or truncated at step {step}")
+                    break
 
     rprint("Task finished!")
     env.close()
