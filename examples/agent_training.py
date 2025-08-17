@@ -38,6 +38,7 @@ from aigym.types import Action, ActionBatch, Observation, RolloutBatch
 
 @dataclass
 class TrainingArgs:
+    model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"
     optim: str = "adamw"
     lr: float = 1e-4
     group_size: int = 4
@@ -252,9 +253,6 @@ def main(training_args: TrainingArgs):
     else:
         device = "cpu"
 
-    # model_id = "google/gemma-3-1b-it"
-    model_id = "Qwen/Qwen2.5-0.5B-Instruct"
-
     target_lora_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
     lora_config = LoraConfig(
         r=16,
@@ -274,13 +272,13 @@ def main(training_args: TrainingArgs):
         )
 
     reference_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
-        model_id,
+        training_args.model_id,
         torch_dtype="auto",
         quantization_config=bnb_config,
     ).to(device)
 
     base_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
-        model_id,
+        training_args.model_id,
         torch_dtype="auto",
         quantization_config=bnb_config,
     ).to(device)
@@ -289,7 +287,7 @@ def main(training_args: TrainingArgs):
     model = get_peft_model(base_model, lora_config, adapter_name="default")
     model.print_trainable_parameters()
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    tokenizer = AutoTokenizer.from_pretrained(training_args.model_id)
 
     reference_model.eval()
 
