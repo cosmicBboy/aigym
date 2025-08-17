@@ -31,7 +31,7 @@ class Action(BaseModel):
 
 
 class ActionBatch(RolloutBatch):
-    actions: list[Action | None]
+    actions: list[Action]
 
 
 class WebPage(BaseModel):

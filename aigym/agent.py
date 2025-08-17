@@ -78,7 +78,7 @@ class Agent:
                 action_dict = None
 
             if action_dict is None:
-                action = None
+                action = Action(completion=completion)
             else:
                 action = Action(
                     **action_dict,
@@ -117,7 +117,7 @@ class Agent:
             action_dict = None
 
         if action_dict is None:
-            return None
+            return Action(completion=completion)
 
         return Action(
             completion,

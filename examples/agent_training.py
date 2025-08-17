@@ -360,7 +360,7 @@ def main(training_args: TrainingArgs):
                 reward = reward_function(action, observation)
                 rewards.append(reward)
                 pprint.print_action(action, index=i)
-                if action is None:
+                if action.action is None:
                     continue
                 if action.url == observation.next_url:
                     step_action = action
