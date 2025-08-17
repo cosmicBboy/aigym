@@ -349,12 +349,10 @@ def main(training_args: TrainingArgs):
 
         step_action: Action | None = None
         rewards: list[float] = []
-        for action in action_batch.actions:
+        for i, action in enumerate(action_batch.actions):
             reward = reward_function(action, observation)
             rewards.append(reward)
-            if action is None:
-                continue
-            pprint.print_action(action)
+            pprint.print_action(action, index=i)
             if action.url == observation.next_url:
                 step_action = action
 
