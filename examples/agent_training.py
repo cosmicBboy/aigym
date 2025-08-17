@@ -340,6 +340,8 @@ def main(training_args: TrainingArgs):
     n_tries = int(n_hops * difficulty_factor)
 
     print(f"Starting to train with {n_tries} steps")
+    print("Travel map:", env.travel_map)
+    print("Travel path:", env.travel_path)
     previous_model = None
     for step in range(1, n_tries):
         print(f"step {step}")

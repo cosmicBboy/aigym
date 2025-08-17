@@ -63,6 +63,9 @@ class Env(gym.Env):
         map = {}
         for current_url, next_url in zip(self.travel_path[:-1], self.travel_path[1:]):
             map[current_url] = next_url
+
+        # the last page is the target page, so it should not have a next page
+        map[self.travel_path[-1]] = None
         return map
 
     def _initialize_target_url(self, start_url: str, n_hops: int) -> tuple[str, list[str]]:
