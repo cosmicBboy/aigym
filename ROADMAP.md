@@ -17,7 +17,7 @@
 - ☑️ Measure performance against common LLM benchmarks
 - ☑️ Implement a wikipedia-based environment using https://huggingface.co/datasets/wikimedia/structured-wikipedia
 
-## Training Procedure
+## 🏋️‍♀️ Training Procedure
 
 The RL training procedure for multi-step episodes is slightly different from
 the common math and coding RLVR settings, where the agent receives
@@ -31,7 +31,7 @@ agent then takes `n` actions until it reaches a terminal state. Returns
 must be broadcast appropriately so that the agent policy can be updated for
 actions earlier in the trajectory.
 
-## Environment
+## 🌍 Environment
 
 In a general sense, the RL environment is represented as a graph of nodes, where
 each node is an observation, and edges between nodes represent some causal
@@ -58,7 +58,7 @@ reinforcement fine-tuning problems that can be cast as a graph of nodes, where:
 
 The training procedure consists of two phases:
 
-### Generate trajectories phase
+### 🔀 Phase 1: Generate trajectories
 
 - For each completion episode:
   - Generate `g` completion trajectories per episode
@@ -76,7 +76,7 @@ The training procedure consists of two phases:
     this, see [here](https://www.perplexity.ai/search/8c78841f-4205-478a-8181-aaa21b74ac75).
   - Save completions in experience replay buffer
 
-### Update agent policy phase
+### 🤖 Phase 2: Update agent policy
 
 - For each completion batch in the experience replay buffer:
   - Compute GRPO loss:

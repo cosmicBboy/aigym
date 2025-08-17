@@ -16,7 +16,7 @@ def main():
 
     enc = tiktoken.get_encoding("cl100k_base")
 
-    def generate_function(prompt: str) -> Generator[str, None, None]:
+    def policy(prompt: str) -> Generator[str, None, None]:
         for chunk in client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model="gpt-4o-mini",
@@ -31,9 +31,8 @@ def main():
             yield delta
 
     agent = Agent(
-        generate_function=generate_function,
+        policy=policy,
         token_encoder=enc,
-        n_retries_per_action=10,
         url_boundaries=["https://en.wikipedia.org"],
     )
 
@@ -48,6 +47,9 @@ def main():
         pprint.print_observation(observation)
         pprint.print_context(observation)
         action = agent.act(observation)
+        if action is None:
+            rprint(f"No action taken at step {step}")
+            continue
         pprint.print_action(action)
         observation, reward, terminated, truncated, info = env.step(action)
         if terminated or truncated:

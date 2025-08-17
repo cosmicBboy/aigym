@@ -92,10 +92,6 @@ perception here
 system prompt here
 </system>
 
-<previous_failed_attempt>
-previous failed attempt here
-</previous_failed_attempt>
-
 <target_url>
 target url here
 </target_url>
@@ -121,7 +117,6 @@ url boundaries here
 - Do not select a url using any of the content in the <instructions> tag or under the <target_url> tag.
 - Try to make interesting and creative connections between the current page and the target page.
 - The response must be a json object on a single line with no additional text before or after.
-- Use the <previous_failed_attempt> contents to avoid repeating the same mistakes, e.g. if a url mentioned in there is caused the error, don't pick it again.
 - You must only select urls in the base url netloc specified in the <url_boundaries> tag.
 """
 
@@ -143,10 +138,6 @@ ACTION_PROMPT_TEMPLATE = """
 {url_boundaries}
 </url_boundaries>
 
-<previous_failed_attempt>
-{previous_failed_attempt}
-</previous_failed_attempt>
-
 <target_url>
 {target_url}
 </target_url>
@@ -162,7 +153,6 @@ Here's critical information about the current state of the game:
 <page_position>{current_chunk}/{total_chunks} chunks</page_position>
 <url_boundaries>{url_boundaries}</url_boundaries>
 <observation>{observation}</observation>
-<previous_failed_attempt>{previous_failed_attempt}</previous_failed_attempt>
 <target_url>{target_url}</target_url>
 
 Given the contents of the <observation>, <current_url>, <page_position>,
@@ -197,8 +187,7 @@ the current page further. The Assistant selects the "visit_url" action with a
 urls in the base url netloc specified in the <url_boundaries> tag. If the url
 starts with a "/wiki/", format the url relative to the base wikipedia url
 https://en.wikipedia.org. It must not select urls that are outside the urls
-specified in the <url_boundaries> tag. DO NOT select any urls that are in the
-<previous_failed_attempt> tag.
+specified in the <url_boundaries> tag.
 
 The Assistant output MUST NOT mention the target web page explicitly in the
 <think> tag, and must refer to it in as the "target page". The Assistant output

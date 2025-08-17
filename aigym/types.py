@@ -2,22 +2,36 @@
 
 from typing import Literal
 
+import torch
 from pydantic import BaseModel, field_validator
+
+
+class RolloutBatch(BaseModel, arbitrary_types_allowed=True):
+    """Metadata for an action, used for training."""
+
+    sequence_ids: torch.Tensor
+    action_mask: torch.Tensor
+    completions: list[str]
 
 
 class Action(BaseModel):
     """An action taken by the agent."""
 
-    reason_summary: str
-    action: Literal["visit_url", "backward", "forward"]
+    completion: str
+    reason_summary: str | None = None
+    action: Literal["visit_url", "backward", "forward"] | None = None
     url: str | None = None
-    reasoning_trace: str
+    reasoning_trace: str | None = None
 
     @field_validator("url")
     def validate_url(cls, v: str | None) -> str | None:
         if v is not None and not v.startswith("http"):
             raise ValueError("url must start with http")
         return v
+
+
+class ActionBatch(RolloutBatch):
+    actions: list[Action | None]
 
 
 class WebPage(BaseModel):
