@@ -363,6 +363,10 @@ def main(training_args: TrainingArgs):
         # save copy of the model for subsequent updates
         model_copy = copy_model(model, base_model, lora_config)
 
+        if all(reward == 0 for reward in rewards):
+            print("All rewards are 0, skipping update")
+            continue
+
         # update the model
         model = update_policy(
             optimizer,
