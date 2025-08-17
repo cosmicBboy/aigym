@@ -50,6 +50,9 @@ class TrainingArgs:
     use_bnb_quantization: bool = False
     enable_gradient_checkpointing: bool = False
     n_tries_per_hop: int = 10
+    rollout_min_new_tokens: int = 64
+    rollout_max_new_tokens: int = 128
+    rollout_temperature: float = 1.25
 
 
 def masked_mean(
@@ -310,9 +313,9 @@ def main(training_args: TrainingArgs):
 
     generation_config = GenerationConfig(
         do_sample=True,
-        min_new_tokens=64,
-        max_new_tokens=128,
-        temperature=1.25,
+        min_new_tokens=training_args.rollout_min_new_tokens,
+        max_new_tokens=training_args.rollout_max_new_tokens,
+        temperature=training_args.rollout_temperature,
         padding=True,
         padding_size="left",
         return_attention_mask=True,
