@@ -48,6 +48,7 @@ class TrainingArgs:
     max_grad_norm: float = 5.0
     use_bnb_quantization: bool = False
     enable_gradient_checkpointing: bool = False
+    n_tries_per_hop: int = 10
 
 
 def masked_mean(
@@ -334,8 +335,7 @@ def main(training_args: TrainingArgs):
     n_hops = 1
     env = WikipediaGymEnv(n_hops=n_hops, lines_per_chunk=None)
     observation, info = env.reset()
-    difficulty_factor = 5  # 1 is the hardest, higher numbers make it easier
-    n_tries = int(n_hops * difficulty_factor)
+    n_tries = int(n_hops * training_args.n_tries_per_hop)
 
     print(f"Starting to train with {n_tries} steps")
     print("Travel map:", env.travel_map)
