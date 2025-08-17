@@ -38,6 +38,7 @@ from aigym.types import Action, ActionBatch, Observation, RolloutBatch
 
 @dataclass
 class TrainingArgs:
+    optim: str = "adamw"
     lr: float = 1e-4
     group_size: int = 4
     advantage_eps: float = 1e-8
@@ -229,9 +230,6 @@ def update_policy(
         action_mask=action_batch.action_mask,
     )
 
-    import ipdb
-
-    ipdb.set_trace()
     if not loss.isfinite():
         print(f"Loss not finite, skipping backward, loss={loss}, advantages: {advantages}")
         return previous_model
@@ -297,7 +295,14 @@ def main(training_args: TrainingArgs):
 
     if training_args.enable_gradient_checkpointing:
         model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-    optimizer = optim.AdamW(model.parameters(), lr=training_args.lr)
+
+    if training_args.optim == "adamw":
+        optimizer = optim.AdamW(model.parameters(), lr=training_args.lr)
+    elif training_args.optim == "sgd":
+        optimizer = optim.SGD(model.parameters(), lr=training_args.lr)
+    else:
+        raise ValueError(f"Invalid optimizer: {training_args.optim}")
+
     objective = GRPOLoss(
         clip_eps=training_args.clip_eps,
         kl_weight=training_args.kl_weight,
@@ -334,7 +339,7 @@ def main(training_args: TrainingArgs):
     difficulty_factor = 5  # 1 is the hardest, higher numbers make it easier
     n_tries = int(n_hops * difficulty_factor)
 
-    print("Starting to train")
+    print(f"Starting to train with {n_tries} steps")
     previous_model = None
     for step in range(1, n_tries):
         print(f"step {step}")
@@ -386,7 +391,10 @@ def main(training_args: TrainingArgs):
 
 
 if __name__ == "__main__":
-    training_args = TrainingArgs()
+    from transformers import HfArgumentParser
+
+    parser = HfArgumentParser(TrainingArgs)
+    training_args, *_ = parser.parse_args_into_dataclasses()
     main(training_args)
 
 
