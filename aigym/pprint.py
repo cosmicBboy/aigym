@@ -30,7 +30,7 @@ def print_context(observation: Observation, head: int = 500, tail: int = 500):
 
 def print_action(action: Action, index: int | None = None):
     if action.action is None:
-        msg = f"Completion:\n {action.completion}"
+        msg = f"Completion:\n {action.completion[:500]}"
     else:
         msg = textwrap.dedent(
             f"""

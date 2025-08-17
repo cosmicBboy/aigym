@@ -111,7 +111,7 @@ class GRPOLoss(nn.Module):
         return loss, kl.mean()
 
 
-def reward_function(action: Action | None, observation: Observation) -> float:
+def reward_function(action: Action, observation: Observation) -> float:
     """Reward function.
 
     - no/invalid action = 0
@@ -119,7 +119,7 @@ def reward_function(action: Action | None, observation: Observation) -> float:
     - correct url = 1.0
     - target url = 2.0
     """
-    if action is None:
+    if action.action is None:
         return 0
     elif action.url == observation.next_url:
         return 1.0

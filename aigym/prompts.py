@@ -38,11 +38,15 @@ The <think> tag contents should focus only on the most promising urls to visit t
 get to the target web page. Based on the <think> tag contents, generate an action
 inside the <answer> tag. The action is a json object in valid json format.
 
+Example Output:
+<think>here are some thoughts about the what url to visit next</think>
+<answer>
 {{
     "action": "backward" | "forward" | "visit_url",
     "url": "if action is "visit_url", this is the url to visit starting with the base wikipedia url" | null
     "reason_summary": "summary of why the Assistant selected the action"
 }}
+</answer>
 
 The Assistant selects the "backward" or "forward" action if it needs to explore
 the current page further. The Assistant selects the "visit_url" action with a
