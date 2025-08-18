@@ -356,7 +356,7 @@ def main(training_args: TrainingArgs):
     env = WikipediaGymEnv(n_hops=n_hops, lines_per_chunk=None)
     n_tries = int(n_hops * training_args.n_tries_per_hop)
 
-    for episode in range(training_args.n_episodes):
+    for episode in range(1, training_args.n_episodes + 1):
         print(f"Starting episode {episode}")
         observation, info = env.reset()
 
