@@ -429,10 +429,10 @@ if __name__ == "__main__":
 # - ✅ return the completions as an action
 # - ✅ implement batch-level completions in the Agent interface
 # - ✅ evaluate batch rewards and advantages
-# - implement batch env.step, have to introduce storing batch states
+# - ✅ implement batch env.step, have to introduce storing batch states
 #   in the environment
-# - for each action in the batch, update environment states
-# - need to handle trajectories in the batch that are already terminated
+# - ☑️ for each action in the batch, update environment states
+# - ☑️ need to handle trajectories in the batch that are already terminated
 #   - just preserve the shape of the inputs but ignore the
 #     actions at index position of terminated trajectories.
 
