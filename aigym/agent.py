@@ -176,8 +176,11 @@ class Agent:
         if action["url"] and not action["url"].startswith("http"):
             action["url"] = urllib.parse.urljoin(f"{_url.scheme}://{_url.netloc}", action["url"])
 
-        if action["url"] and self._url_not_in_context(action["url"], observation.context):
-            raise InvalidActionError(f"url {action['url']} is not in the context. action: {action}")
+        try:
+            if action["url"] and self._url_not_in_context(action["url"], observation.context):
+                raise InvalidActionError(f"url {action['url']} is not in the context. action: {action}")
+        except ValueError as exc:
+            raise InvalidActionError(str(exc)) from exc
 
         return action, reasoning_trace
 
