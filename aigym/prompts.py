@@ -42,19 +42,17 @@ Example Output:
 <think>here are some thoughts about the what url to visit next</think>
 <answer>
 {{
-    "action": "visit_url" | "backward" | "forward",
+    "action": "visit_url",
     "url": "if action is "visit_url", this is the url to visit starting with the base wikipedia url. otherwise it's null" | null
     "reason_summary": "summary of why the Assistant selected the action"
 }}
 </answer>
 
-The Assistant selects the "backward" or "forward" action if it needs to explore
-the current page further. The Assistant selects the "visit_url" action with a
-"url" value that will get it closer to the target web page. You must only select
-urls in the base url netloc specified in the <url_boundaries> tag. If the url
-starts with a "/wiki/", format the url relative to the base wikipedia url
-https://en.wikipedia.org. It must not select urls that are outside the urls
-specified in the <url_boundaries> tag.
+The Assistant selects the "visit_url" action with a "url" value that will get it
+closer to the target web page. You must only select urls in the base url netloc
+specified in the <url_boundaries> tag. If the url starts with a "/wiki/", format
+the url relative to the base wikipedia url https://en.wikipedia.org. It must not
+select urls that are outside the urls specified in the <url_boundaries> tag.
 
 The Assistant output MUST NOT mention the target web page explicitly in the
 <think> tag, and must refer to it in as the "target page". The Assistant output
