@@ -72,7 +72,7 @@ class Agent:
         actions = []
         for completion in batch.completions:
             try:
-                action_dict, reasoning_trace = self._parse_completion(completion, observation)
+                action_dict, reasoning_trace = self.parse_completion(completion, observation)
             except (json.JSONDecodeError, InvalidActionError) as exc:
                 rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
                 action_dict = None
@@ -111,7 +111,7 @@ class Agent:
         print("\n")
         rprint(Panel.fit("End attempt", border_style="purple"))
         try:
-            action_dict, reasoning_trace = self._parse_completion(completion, observation)
+            action_dict, reasoning_trace = self.parse_completion(completion, observation)
         except (json.JSONDecodeError, InvalidActionError) as exc:
             rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
             action_dict = None
@@ -135,7 +135,49 @@ class Agent:
             url_boundaries=", ".join(self.url_boundaries) if self.url_boundaries else "NONE",
         )
 
+    def parse_completion(self, completion: str, observation: Observation) -> tuple[dict, str] | tuple[None, None]:
+        import re
+
+        think_match = re.search(r"<think>(.*?)</think>", completion, re.DOTALL)
+        reasoning_trace = think_match.group(1).strip() if think_match else ""
+
+        answer_match = re.search(r"<answer>(.*?)</answer>", completion, re.DOTALL)
+        answer = answer_match.group(1).strip() if answer_match else ""
+
+        try:
+            action = json.loads(answer)
+        except json.JSONDecodeError:
+            logger.info("Could not generate a valid action")
+            return None, None
+
+        action = {k.lower(): v for k, v in action.items()}
+        if action.get("action") != "visit_url" and "url" not in action:
+            action["url"] = None
+
+        if action.get("action") == "visit_url" and action["url"] is None:
+            raise InvalidActionError(f"url is required for visit_url action, found None. action: {action}")
+
+        _url = urllib.parse.urlparse(observation.url)
+
+        if self.url_boundaries is not None:
+            _url_boundary_netlocs = frozenset(
+                [urllib.parse.urlparse(url_boundary).netloc for url_boundary in self.url_boundaries]
+            )
+            if _url.netloc not in _url_boundary_netlocs:
+                raise InvalidActionError(
+                    f"url {action['url']} is not in the url boundaries {self.url_boundaries}. action: {action}"
+                )
+        # make sure url is a valid url
+        if action["url"] and not action["url"].startswith("http"):
+            action["url"] = urllib.parse.urljoin(f"{_url.scheme}://{_url.netloc}", action["url"])
+
+        if action["url"] and self._url_not_in_context(action["url"], observation.context):
+            raise InvalidActionError(f"url {action['url']} is not in the context. action: {action}")
+
+        return action, reasoning_trace
+
     def _parse_completion(self, completion: str, observation: Observation) -> Action:
+        # TODO: remove this function in favor of parse_completion
         if "</think>" in completion:
             reasoning_trace, _completion = completion.split("</think>", maxsplit=1)
             _completion = _completion.strip().replace("<think>", "").strip()

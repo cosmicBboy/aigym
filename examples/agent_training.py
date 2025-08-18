@@ -320,6 +320,7 @@ def main(training_args: TrainingArgs):
         padding_size="left",
         return_attention_mask=True,
         pad_token_id=tokenizer.eos_token_id,
+        stop_strings=["</answer>"],
     )
 
     print(f"Initializing agent with generation config {generation_config}")

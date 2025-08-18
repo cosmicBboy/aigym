@@ -61,6 +61,7 @@ The Assistant output MUST NOT mention the target web page explicitly in the
 MUST contain <think> </think> and <answer> </answer> tags.
 
 DO NOT pick the <current_url> as the url to visit.
+ONLY OUTPUT one json object in the <answer> tag.
 
 Output:
 """
