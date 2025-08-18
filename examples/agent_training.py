@@ -146,7 +146,11 @@ def policy(
     # generate completions
     model.eval()
     with torch.no_grad():
-        sequence_ids = model.generate(**model_inputs, generation_config=generation_config)
+        sequence_ids = model.generate(
+            **model_inputs,
+            generation_config=generation_config,
+            tokenizer=tokenizer,
+        )
 
     completions = tokenizer.batch_decode(
         sequence_ids[:, model_inputs["input_ids"].shape[1] :],
