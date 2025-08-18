@@ -8,6 +8,7 @@ from typing import Callable, Generator
 import httpx
 import rich.markup
 import tiktoken
+from pydantic import ValidationError
 from rich import print as rprint
 from rich.panel import Panel
 
@@ -80,11 +81,15 @@ class Agent:
             if action_dict is None:
                 action = Action(completion=completion)
             else:
-                action = Action(
-                    **action_dict,
-                    completion=completion,
-                    reasoning_trace=reasoning_trace,
-                )
+                try:
+                    action = Action(
+                        **action_dict,
+                        completion=completion,
+                        reasoning_trace=reasoning_trace,
+                    )
+                except ValidationError as exc:
+                    rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
+                    action = Action(completion=completion)
 
             actions.append(action)
         return ActionBatch(
