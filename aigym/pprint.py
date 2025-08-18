@@ -30,7 +30,8 @@ def print_context(observation: Observation, head: int = 500, tail: int = 500):
 
 def print_action(action: Action, index: int | None = None):
     if action.action is None:
-        msg = f"Completion:\n {action.completion[:500]}"
+        msg = f"Invalid completion:\n {action.completion[:500]}"
+        color = "red"
     else:
         msg = textwrap.dedent(
             f"""
@@ -39,5 +40,6 @@ def print_action(action: Action, index: int | None = None):
             [bold]Reasoning[/bold]: {action.reason_summary}
             """
         ).strip()
+        color = "green"
 
-    rprint(Panel.fit(msg, title=f"Action {index}" if index is not None else "Action", border_style="green"))
+    rprint(Panel.fit(msg, title=f"Action {index}" if index is not None else "Action", border_style=color))
