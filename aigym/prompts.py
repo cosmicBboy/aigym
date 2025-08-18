@@ -43,7 +43,7 @@ Example Output:
 <answer>
 {{
     "action": "visit_url",
-    "url": "if action is "visit_url", this is the url to visit starting with the base wikipedia url. otherwise it's null" | null
+    "url": "the url to visit starting with the base wikipedia url."
     "reason_summary": "summary of why the Assistant selected the action"
 }}
 </answer>
