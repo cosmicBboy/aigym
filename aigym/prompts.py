@@ -42,8 +42,8 @@ Example Output:
 <think>here are some thoughts about the what url to visit next</think>
 <answer>
 {{
-    "action": "backward" | "forward" | "visit_url",
-    "url": "if action is "visit_url", this is the url to visit starting with the base wikipedia url" | null
+    "action": "visit_url" | "backward" | "forward",
+    "url": "if action is "visit_url", this is the url to visit starting with the base wikipedia url. otherwise it's null" | null
     "reason_summary": "summary of why the Assistant selected the action"
 }}
 </answer>
