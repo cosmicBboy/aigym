@@ -23,7 +23,8 @@ python examples/agent_training.py \
     --n_tries_per_hop 100 \
     --rollout_min_new_tokens 256 \
     --rollout_max_new_tokens 1024 \
-    --group_size 4
+    --group_size 4 \
+    --n_episodes 30
 ```
 """
 
