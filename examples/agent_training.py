@@ -23,8 +23,7 @@ python examples/agent_training.py \
     --n_tries_per_hop 100 \
     --rollout_min_new_tokens 256 \
     --rollout_max_new_tokens 1024 \
-    --group_size 4 \
-    --n_episodes 30
+    --group_size 4
 ```
 """
 
@@ -52,6 +51,7 @@ from aigym.types import Action, ActionBatch, Observation, RolloutBatch
 class TrainingArgs:
     n_episodes: int = 10
     model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"
+    ref_model_id: str = "Qwen/Qwen2.5-3B-Instruct"
     optim: str = "adamw"
     lr: float = 1e-4
     group_size: int = 4
@@ -123,6 +123,20 @@ class GRPOLoss(nn.Module):
         return loss, kl.mean()
 
 
+def approx_kl_divergence(
+    log_probs: torch.Tensor,
+    log_probs_ref: torch.Tensor,
+    action_mask: torch.Tensor | None,
+) -> torch.Tensor:
+    """
+    Reference: http://joschu.net/blog/kl-approx.html
+    """
+    log_ratio = log_probs_ref.float() - log_probs.float()
+    if action_mask is not None:
+        log_ratio = log_ratio * action_mask
+    return log_ratio.exp() - log_ratio - 1
+
+
 def reward_function(action: Action, observation: Observation) -> float:
     """Reward function.
 
@@ -183,20 +197,6 @@ def policy(
     )
 
 
-def approx_kl_divergence(
-    log_probs: torch.Tensor,
-    log_probs_ref: torch.Tensor,
-    action_mask: torch.Tensor | None,
-) -> torch.Tensor:
-    """
-    Reference: http://joschu.net/blog/kl-approx.html
-    """
-    log_ratio = log_probs_ref.float() - log_probs.float()
-    if action_mask is not None:
-        log_ratio = log_ratio * action_mask
-    return log_ratio.exp() - log_ratio - 1
-
-
 def compute_log_probs(
     model: PreTrainedModel,
     sequence_ids: torch.Tensor,
@@ -230,8 +230,9 @@ def update_policy(
 ):
     model.train()
     optimizer.zero_grad()
-    rewards = torch.tensor(rewards, dtype=model.dtype).unsqueeze(1)
-    advantages = rewards - rewards.mean() / (rewards.std() + training_args.advantage_eps)
+    rewards: torch.Tensor = torch.tensor(rewards, dtype=model.dtype).unsqueeze(1)
+    advantages = rewards - rewards.mean()
+    advantages = advantages / (rewards.std() + training_args.advantage_eps)
 
     pad_token_id = tokenizer.eos_token_id
     attention_mask = action_batch.sequence_ids != pad_token_id
@@ -293,7 +294,7 @@ def main(training_args: TrainingArgs):
         )
 
     reference_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
-        training_args.model_id,
+        training_args.ref_model_id or training_args.model_id,
         torch_dtype="auto",
         quantization_config=bnb_config,
     ).to(device)
@@ -304,7 +305,7 @@ def main(training_args: TrainingArgs):
         quantization_config=bnb_config,
     ).to(device)
 
-    reference_model = get_peft_model(base_model, lora_config, adapter_name="default")
+    reference_model = get_peft_model(reference_model, lora_config, adapter_name="default")
     model = get_peft_model(base_model, lora_config, adapter_name="default")
     model.print_trainable_parameters()
 
@@ -430,10 +431,10 @@ if __name__ == "__main__":
 # - ✅ return the completions as an action
 # - ✅ implement batch-level completions in the Agent interface
 # - ✅ evaluate batch rewards and advantages
-# - ✅ implement batch env.step, have to introduce storing batch states
+# - implement batch env.step, have to introduce storing batch states
 #   in the environment
-# - ☑️ for each action in the batch, update environment states
-# - ☑️ need to handle trajectories in the batch that are already terminated
+# - for each action in the batch, update environment states
+# - need to handle trajectories in the batch that are already terminated
 #   - just preserve the shape of the inputs but ignore the
 #     actions at index position of terminated trajectories.
 
