@@ -20,7 +20,7 @@ Example using cli args:
 python examples/agent_training.py \
     --model_id Qwen/Qwen2.5-3B-Instruct \
     --enable_gradient_checkpointing \
-    --n_tries_per_hop 100 \
+    --n_tries_per_hop 10 \
     --rollout_min_new_tokens 256 \
     --rollout_max_new_tokens 1024 \
     --group_size 4
@@ -36,6 +36,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import wandb
 from peft import LoraConfig, PeftModelForCausalLM, get_peft_model
 from rich import print as rprint
 from torch.nn.utils import clip_grad_norm_
@@ -65,6 +66,7 @@ class TrainingArgs:
     rollout_min_new_tokens: int = 64
     rollout_max_new_tokens: int = 128
     rollout_temperature: float = 1.25
+    wandb_project: str = None
 
 
 def masked_mean(
@@ -106,7 +108,7 @@ class GRPOLoss(nn.Module):
         log_probs: torch.Tensor,
         log_probs_old: torch.Tensor,
         log_probs_ref: torch.Tensor,
-        advantages: torch.Tensor,
+        returns: torch.Tensor,
         action_mask: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         kl = approx_kl_divergence(
@@ -116,8 +118,8 @@ class GRPOLoss(nn.Module):
         )
 
         ratio = (log_probs - log_probs_old).exp()
-        surr1 = ratio * advantages
-        surr2 = ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * advantages
+        surr1 = ratio * returns
+        surr2 = ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * returns
         loss = -torch.min(surr1, surr2) + self.kl_weight * kl
         loss = masked_mean(loss, action_mask, dim=-1).mean()
         return loss, kl.mean()
@@ -135,6 +137,26 @@ def approx_kl_divergence(
     if action_mask is not None:
         log_ratio = log_ratio * action_mask
     return log_ratio.exp() - log_ratio - 1
+
+
+def compute_log_probs(
+    model: PreTrainedModel,
+    sequence_ids: torch.Tensor,
+    attention_mask: torch.Tensor,
+):
+    position_ids = attention_mask.long().cumsum(dim=-1) - 1
+    position_ids.masked_fill_(mask=(attention_mask == 0), value=1)
+    output = model.forward(
+        input_ids=sequence_ids,
+        attention_mask=attention_mask,
+        position_ids=position_ids,
+        use_cache=False,
+    )
+    logits = output["logits"][:, :-1].to(model.dtype)
+    output_ids = sequence_ids[:, 1:]
+
+    log_probs = F.log_softmax(logits, dim=-1)
+    return log_probs.gather(dim=-1, index=output_ids.unsqueeze(-1)).squeeze(-1)
 
 
 def reward_function(action: Action, observation: Observation) -> float:
@@ -197,27 +219,8 @@ def policy(
     )
 
 
-def compute_log_probs(
-    model: PreTrainedModel,
-    sequence_ids: torch.Tensor,
-    attention_mask: torch.Tensor,
-):
-    position_ids = attention_mask.long().cumsum(dim=-1) - 1
-    position_ids.masked_fill_(mask=(attention_mask == 0), value=1)
-    output = model.forward(
-        input_ids=sequence_ids,
-        attention_mask=attention_mask,
-        position_ids=position_ids,
-        use_cache=False,
-    )
-    logits = output["logits"][:, :-1].to(model.dtype)
-    output_ids = sequence_ids[:, 1:]
-
-    log_probs = F.log_softmax(logits, dim=-1)
-    return log_probs.gather(dim=-1, index=output_ids.unsqueeze(-1)).squeeze(-1)
-
-
 def update_policy(
+    returns: torch.Tensor,
     optimizer: optim.Optimizer,
     tokenizer: AutoTokenizer,
     objective: GRPOLoss,
@@ -226,13 +229,9 @@ def update_policy(
     previous_model: PreTrainedModel | None,
     reference_model: PreTrainedModel,
     action_batch: ActionBatch,
-    rewards: list[float],
 ):
     model.train()
     optimizer.zero_grad()
-    rewards: torch.Tensor = torch.tensor(rewards, dtype=model.dtype).unsqueeze(1)
-    advantages = rewards - rewards.mean()
-    advantages = advantages / (rewards.std() + training_args.advantage_eps)
 
     pad_token_id = tokenizer.eos_token_id
     attention_mask = action_batch.sequence_ids != pad_token_id
@@ -249,22 +248,27 @@ def update_policy(
         log_probs=log_probs,
         log_probs_old=log_probs_old,
         log_probs_ref=log_probs_ref,
-        advantages=advantages.to(model.device),
+        returns=returns,
         action_mask=action_batch.action_mask,
     )
 
     if not loss.isfinite():
-        print(f"Loss not finite, skipping backward, loss={loss}, advantages: {advantages}")
+        print(f"Loss not finite, skipping backward, loss={loss}, returns: {returns}")
         return previous_model
 
     loss.backward()
     grad_norm = clip_grad_norm_(model.parameters(), max_norm=training_args.max_grad_norm)
-    print(f"loss={loss: .4f}, kl={kl: .4f}, grad_norm={grad_norm: .4f}")
+    print(f"loss={loss: .10f}, kl={kl: .10f}, grad_norm={grad_norm: .10f}")
     optimizer.step()
-    return model
+    return model, loss, kl, grad_norm
 
 
 def main(training_args: TrainingArgs):
+    if training_args.wandb_project is None:
+        wandb.init(mode="disabled")
+    else:
+        wandb.init(project=training_args.wandb_project)
+
     enc = tiktoken.get_encoding("cl100k_base")
 
     print("Loading model")
@@ -277,8 +281,8 @@ def main(training_args: TrainingArgs):
 
     target_lora_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
     lora_config = LoraConfig(
-        r=16,
-        lora_alpha=32,
+        r=8,
+        lora_alpha=64,
         target_modules=target_lora_modules,
         lora_dropout=0.1,
         bias="none",
@@ -366,6 +370,9 @@ def main(training_args: TrainingArgs):
         print("Travel map:", env.travel_map)
         print("Travel path:", env.travel_path)
         previous_model = None
+        episode_cumulative_returns = 0
+        episode_cumulative_rewards = 0
+
         for step in range(1, n_tries):
             print(f"step {step}")
             pprint.print_observation(observation)
@@ -383,15 +390,19 @@ def main(training_args: TrainingArgs):
                 if action.url == observation.next_url:
                     step_action = action
 
-            # save copy of the model for subsequent updates
-            model_copy = copy_model(model, base_model, lora_config)
+            rewards: torch.Tensor = torch.tensor(rewards, dtype=model.dtype).unsqueeze(1)
+            returns = (rewards - rewards.mean()) / (rewards.std() + training_args.advantage_eps)
 
-            if all(reward == 0 for reward in rewards):
-                print("All rewards are 0, skipping update")
+            # save copy of the model for subsequent updates
+            model_copy = copy_model(model, base_model=base_model, lora_config=lora_config)
+
+            if returns.mean() == 0:
+                print("All returns are 0, skipping update")
                 continue
 
             # update the model
-            model = update_policy(
+            model, loss, kl, grad_norm = update_policy(
+                returns,
                 optimizer,
                 tokenizer,
                 objective,
@@ -400,9 +411,22 @@ def main(training_args: TrainingArgs):
                 previous_model,
                 reference_model,
                 action_batch,
-                rewards,
             )
-            print(f"step {step}, rewards: {rewards}")
+            episode_cumulative_returns += returns.squeeze().sum()
+            episode_cumulative_rewards += rewards.sum()
+
+            print(f"step {step}, rewards: {rewards}, returns: {returns}")
+            wandb.log(
+                {
+                    "returns": returns.mean(),
+                    "rewards": rewards.mean(),
+                    "episode_cumulative_returns": episode_cumulative_returns,
+                    "episode_cumulative_rewards": episode_cumulative_rewards,
+                    "loss": loss,
+                    "kl": kl,
+                    "grad_norm": grad_norm,
+                }
+            )
 
             # set previous model for the next update
             previous_model = model_copy
