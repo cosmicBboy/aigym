@@ -17,13 +17,15 @@ python examples/agent_training.py
 
 Example using cli args:
 ```bash
+export WANDB_API_KEY=...
 python examples/agent_training.py \
     --model_id Qwen/Qwen2.5-3B-Instruct \
     --enable_gradient_checkpointing \
     --n_tries_per_hop 10 \
     --rollout_min_new_tokens 256 \
     --rollout_max_new_tokens 1024 \
-    --group_size 4
+    --group_size 4 \
+    --wandb_project aigym-agent-training
 ```
 """
 
