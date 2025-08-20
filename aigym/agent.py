@@ -177,6 +177,9 @@ class Agent:
                     f"url {action['url']} is not in the url boundaries {self.url_boundaries}. action: {action}"
                 )
         # make sure url is a valid url
+        if not isinstance(action["url"], str):
+            raise InvalidActionError(f"url is not a string. action: {action}")
+
         if action["url"] and not action["url"].startswith("http"):
             action["url"] = urllib.parse.urljoin(f"{_url.scheme}://{_url.netloc}", action["url"])
 
