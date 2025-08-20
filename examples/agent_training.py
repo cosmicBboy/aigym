@@ -76,6 +76,7 @@ class TrainingArgs:
     rollout_max_new_tokens: int = 128
     rollout_temperature: float = 1.25
     wandb_project: str = None
+    use_original_sequence_ids: bool = True
 
 
 def masked_mean(
@@ -211,9 +212,9 @@ def policy(
         sequence_ids[:, model_inputs["input_ids"].shape[1] :],
         skip_special_tokens=True,
     )
-    del sequence_ids
 
     return RolloutBatch(
+        sequence_ids=sequence_ids,
         input_ids=model_inputs["input_ids"],
         completions=completions,
     )
@@ -223,6 +224,7 @@ def reconstruct_sequence_ids(
     action_batch: ActionBatch,
     tokenizer: PreTrainedTokenizer,
     model: PreTrainedModel,
+    use_original_sequence_ids: bool,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Reconstructs clean sequence ids from the action batch.
 
@@ -231,20 +233,24 @@ def reconstruct_sequence_ids(
     from the loss calculation. The attention mask is used to mask out the
     padding tokens from the loss calculation.
     """
-    completion_token_ids = []
-    for action in action_batch.actions:
-        completion_token_ids.append(tokenizer.encode(action.completion))
 
-    batch_size = len(action_batch.actions)
-    sequence_ids = torch.full(
-        (batch_size, max(len(ids) for ids in completion_token_ids)),
-        tokenizer.eos_token_id,
-        dtype=torch.long,
-    ).to(model.device)
+    if use_original_sequence_ids:
+        sequence_ids = action_batch.sequence_ids
+    else:
+        completion_token_ids = []
+        for action in action_batch.actions:
+            completion_token_ids.append(tokenizer.encode(action.completion))
 
-    for i, ids in enumerate(completion_token_ids):
-        sequence_ids[i, : len(ids)] = torch.tensor(ids)
-    sequence_ids = torch.cat([action_batch.input_ids.to(model.device), sequence_ids], dim=1)
+        batch_size = len(action_batch.actions)
+        sequence_ids = torch.full(
+            (batch_size, max(len(ids) for ids in completion_token_ids)),
+            tokenizer.eos_token_id,
+            dtype=torch.long,
+        ).to(model.device)
+
+        for i, ids in enumerate(completion_token_ids):
+            sequence_ids[i, : len(ids)] = torch.tensor(ids)
+        sequence_ids = torch.cat([action_batch.input_ids.to(model.device), sequence_ids], dim=1)
 
     # action mask makes sure end of sequence tokens are masked out of the
     # loss calculation
@@ -273,7 +279,12 @@ def update_policy(
     model.train()
     optimizer.zero_grad()
 
-    sequence_ids, action_mask, attention_mask = reconstruct_sequence_ids(action_batch, tokenizer, model)
+    sequence_ids, action_mask, attention_mask = reconstruct_sequence_ids(
+        action_batch,
+        tokenizer,
+        model,
+        training_args.use_original_sequence_ids,
+    )
 
     log_probs = compute_log_probs(model, sequence_ids, attention_mask)
     with torch.no_grad():
@@ -354,10 +365,16 @@ def main(training_args: TrainingArgs):
     ).to(device)
 
     reference_model = get_peft_model(reference_model, lora_config, adapter_name="default")
+    reference_model.save_lora_adapter("./adaptor", adapter_name="default")
+
     prev_model = get_peft_model(prev_model, lora_config, adapter_name="default")
     model = get_peft_model(model, lora_config, adapter_name="default")
     prev_model = copy_model(model, prev_model)
     model.print_trainable_parameters()
+
+    reference_model.set_adapter("default")
+    prev_model.set_adapter("default")
+    model.set_adapter("default")
 
     tokenizer = AutoTokenizer.from_pretrained(training_args.model_id)
 
