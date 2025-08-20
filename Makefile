@@ -9,3 +9,6 @@ build: install-build build-clean
 
 publish: build
 	twine upload dist/*
+
+pip-install:
+    pip install -U pip && pip install -e '.[peft]'

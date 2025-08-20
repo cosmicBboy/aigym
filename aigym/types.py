@@ -9,7 +9,6 @@ from pydantic import BaseModel, field_validator
 class RolloutBatch(BaseModel, arbitrary_types_allowed=True):
     """Metadata for an action, used for training."""
 
-    sequence_ids: torch.Tensor
     input_ids: torch.Tensor
     completions: list[str]
 

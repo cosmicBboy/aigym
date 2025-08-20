@@ -23,7 +23,7 @@ python examples/agent_training.py \
     --enable_gradient_checkpointing \
     --n_tries_per_hop 10 \
     --rollout_min_new_tokens 256 \
-    --rollout_max_new_tokens 1024 \
+    --rollout_max_new_tokens 512 \
     --group_size 4 \
     --wandb_project aigym-agent-training
 ```
@@ -498,31 +498,3 @@ if __name__ == "__main__":
     parser = HfArgumentParser(TrainingArgs)
     training_args, *_ = parser.parse_args_into_dataclasses()
     main(training_args)
-
-
-# TODO:
-# - ✅ return the completions as an action
-# - ✅ implement batch-level completions in the Agent interface
-# - ✅ evaluate batch rewards and advantages
-# - implement batch env.step, have to introduce storing batch states
-#   in the environment
-# - for each action in the batch, update environment states
-# - need to handle trajectories in the batch that are already terminated
-#   - just preserve the shape of the inputs but ignore the
-#     actions at index position of terminated trajectories.
-
-# IDEA:
-# We can simplify the training process by computing rewards against
-# the correct next step, as opposed to waiting n turns for all actions
-# in the batch to reach (a) the target, or (b) hit max token configuration.
-#
-# The heuristic would be:
-#
-# - Suppose a trajectory: ["page_0", "page_1", "page_2"]
-# - Assign target to "page_n"
-# - Roll out trajectories for batch size of `b`
-# - Compute reward from trajectories
-# - Do backwards pass
-# - If the "next_page" target is proposed by one sample:
-#   - Assign target to "page_{n+1}"
-#   - Take a step in the environment to the next pagepage
