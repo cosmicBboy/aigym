@@ -365,8 +365,6 @@ def main(training_args: TrainingArgs):
     ).to(device)
 
     reference_model = get_peft_model(reference_model, lora_config, adapter_name="default")
-    reference_model.save_lora_adapter("./adaptor", adapter_name="default")
-
     prev_model = get_peft_model(prev_model, lora_config, adapter_name="default")
     model = get_peft_model(model, lora_config, adapter_name="default")
     prev_model = copy_model(model, prev_model)
@@ -425,6 +423,8 @@ def main(training_args: TrainingArgs):
     env = WikipediaGymEnv(n_hops=n_hops, lines_per_chunk=None)
     n_tries = int(n_hops * training_args.n_tries_per_hop)
 
+    total_cumulative_returns = 0
+    total_cumulative_rewards = 0
     for episode in range(1, training_args.n_episodes + 1):
         print(f"Starting episode {episode}")
         observation, info = env.reset()
@@ -478,6 +478,11 @@ def main(training_args: TrainingArgs):
                 prev_model,
                 reference_model,
             )
+
+            returns_sum = returns.squeeze().sum()
+            rewards_sum = rewards.sum()
+            total_cumulative_returns += returns_sum
+            total_cumulative_rewards += rewards_sum
             episode_cumulative_returns += returns.squeeze().sum()
             episode_cumulative_rewards += rewards.sum()
 
@@ -488,6 +493,8 @@ def main(training_args: TrainingArgs):
                     "rewards": rewards.mean(),
                     "episode_cumulative_returns": episode_cumulative_returns,
                     "episode_cumulative_rewards": episode_cumulative_rewards,
+                    "total_cumulative_returns": total_cumulative_returns,
+                    "total_cumulative_rewards": total_cumulative_rewards,
                     "loss": loss,
                     "kl": kl,
                     "grad_norm": grad_norm,
