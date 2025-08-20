@@ -73,7 +73,7 @@ class Agent:
         actions = []
         for completion in batch.completions:
             try:
-                action_dict, reasoning_trace = self.parse_completion(completion, observation)
+                action_dict, completion, reasoning_trace = self.parse_completion(completion, observation)
             except (json.JSONDecodeError, InvalidActionError) as exc:
                 rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
                 action_dict = None
@@ -116,7 +116,7 @@ class Agent:
         print("\n")
         rprint(Panel.fit("End attempt", border_style="purple"))
         try:
-            action_dict, reasoning_trace = self.parse_completion(completion, observation)
+            action_dict, completion, reasoning_trace = self.parse_completion(completion, observation)
         except (json.JSONDecodeError, InvalidActionError) as exc:
             rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
             action_dict = None
@@ -140,7 +140,7 @@ class Agent:
             url_boundaries=", ".join(self.url_boundaries) if self.url_boundaries else "NONE",
         )
 
-    def parse_completion(self, completion: str, observation: Observation) -> tuple[dict, str]:
+    def parse_completion(self, completion: str, observation: Observation) -> tuple[dict, str, str]:
         import re
 
         think_match = re.search(r"<think>(.*?)</think>", completion, re.DOTALL)
@@ -186,7 +186,10 @@ class Agent:
         except Exception as exc:
             raise InvalidActionError(str(exc)) from exc
 
-        return action, reasoning_trace
+        action_json = json.dumps(action, indent=2)
+        # create clean completion
+        completion = f"<think>\n{reasoning_trace}\n</think>\n<answer>\n{action_json}\n</answer>"
+        return action, completion, reasoning_trace
 
     def _url_not_in_context(self, url: str, context: str) -> bool:
         _url = urllib.parse.urlparse(url)

@@ -42,7 +42,14 @@ import wandb
 from peft import LoraConfig, PeftModelForCausalLM, get_peft_model
 from rich import print as rprint
 from torch.nn.utils import clip_grad_norm_
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, GenerationConfig, PreTrainedModel
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    GenerationConfig,
+    PreTrainedModel,
+    PreTrainedTokenizer,
+)
 
 import aigym.pprint as pprint
 from aigym.agent import Agent
@@ -83,12 +90,10 @@ def masked_mean(
 
 def copy_model(
     model: PreTrainedModel | PeftModelForCausalLM,
-    base_model: PreTrainedModel = None,
-    lora_config: LoraConfig = None,
+    model_copy: PreTrainedModel | PeftModelForCausalLM,
 ) -> PreTrainedModel:
     if isinstance(model, PeftModelForCausalLM):
         model = cast(PeftModelForCausalLM, model)
-        model_copy = get_peft_model(base_model, lora_config)
         model_copy.load_state_dict({k: v.clone() if "lora" in k else v for k, v in model.state_dict().items()})
     else:
         model_copy = type(model)(model.config)
@@ -206,52 +211,83 @@ def policy(
         sequence_ids[:, model_inputs["input_ids"].shape[1] :],
         skip_special_tokens=True,
     )
-
-    # action mask makes sure end of sequence tokens are masked out of the
-    # loss calculation
-    action_mask = torch.zeros_like(sequence_ids, dtype=torch.bool)
-    action_mask[:, model_inputs["input_ids"].shape[1] :] = True
-    action_mask[sequence_ids == tokenizer.eos_token_id] = False
-    action_mask = action_mask[:, 1:]
+    del sequence_ids
 
     return RolloutBatch(
-        sequence_ids=sequence_ids,
-        action_mask=action_mask,
+        input_ids=model_inputs["input_ids"],
         completions=completions,
     )
 
 
+def reconstruct_sequence_ids(
+    action_batch: ActionBatch,
+    tokenizer: PreTrainedTokenizer,
+    model: PreTrainedModel,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Reconstructs clean sequence ids from the action batch.
+
+    The sequence ids are constructed by concatenating the input ids and the
+    completion token ids. The action mask is used to mask out the input ids
+    from the loss calculation. The attention mask is used to mask out the
+    padding tokens from the loss calculation.
+    """
+    completion_token_ids = []
+    for action in action_batch.actions:
+        completion_token_ids.append(tokenizer.encode(action.completion))
+
+    batch_size = len(action_batch.actions)
+    sequence_ids = torch.full(
+        (batch_size, max(len(ids) for ids in completion_token_ids)),
+        tokenizer.eos_token_id,
+        dtype=torch.long,
+    ).to(model.device)
+
+    for i, ids in enumerate(completion_token_ids):
+        sequence_ids[i, : len(ids)] = torch.tensor(ids)
+    sequence_ids = torch.cat([action_batch.input_ids.to(model.device), sequence_ids], dim=1)
+
+    # action mask makes sure end of sequence tokens are masked out of the
+    # loss calculation
+    action_mask = torch.zeros_like(sequence_ids, dtype=torch.bool)
+    action_mask[:, action_batch.input_ids.shape[1] :] = True
+    action_mask[sequence_ids == tokenizer.eos_token_id] = False
+    action_mask = action_mask[:, 1:]
+
+    pad_token_id = tokenizer.eos_token_id
+    attention_mask = sequence_ids != pad_token_id
+
+    return sequence_ids, action_mask, attention_mask
+
+
 def update_policy(
+    action_batch: ActionBatch,
     returns: torch.Tensor,
     optimizer: optim.Optimizer,
-    tokenizer: AutoTokenizer,
+    tokenizer: PreTrainedTokenizer,
     objective: GRPOLoss,
     training_args: TrainingArgs,
     model: PreTrainedModel,
     previous_model: PreTrainedModel | None,
     reference_model: PreTrainedModel,
-    action_batch: ActionBatch,
 ):
     model.train()
     optimizer.zero_grad()
 
-    pad_token_id = tokenizer.eos_token_id
-    attention_mask = action_batch.sequence_ids != pad_token_id
-    log_probs = compute_log_probs(model, action_batch.sequence_ids, attention_mask)
+    sequence_ids, action_mask, attention_mask = reconstruct_sequence_ids(action_batch, tokenizer, model)
+
+    log_probs = compute_log_probs(model, sequence_ids, attention_mask)
     with torch.no_grad():
         log_probs_old = (
-            log_probs
-            if previous_model is None
-            else compute_log_probs(previous_model, action_batch.sequence_ids, attention_mask)
+            log_probs if previous_model is None else compute_log_probs(previous_model, sequence_ids, attention_mask)
         )
-        log_probs_ref = compute_log_probs(reference_model, action_batch.sequence_ids, attention_mask)
+        log_probs_ref = compute_log_probs(reference_model, sequence_ids, attention_mask)
 
     loss, kl = objective(
         log_probs=log_probs,
         log_probs_old=log_probs_old,
         log_probs_ref=log_probs_ref,
         returns=returns,
-        action_mask=action_batch.action_mask,
+        action_mask=action_mask,
     )
 
     if not loss.isfinite():
@@ -305,14 +341,22 @@ def main(training_args: TrainingArgs):
         quantization_config=bnb_config,
     ).to(device)
 
-    base_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
+    prev_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
+        training_args.ref_model_id or training_args.model_id,
+        torch_dtype="auto",
+        quantization_config=bnb_config,
+    ).to(device)
+
+    model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
         training_args.model_id,
         torch_dtype="auto",
         quantization_config=bnb_config,
     ).to(device)
 
     reference_model = get_peft_model(reference_model, lora_config, adapter_name="default")
-    model = get_peft_model(base_model, lora_config, adapter_name="default")
+    prev_model = get_peft_model(prev_model, lora_config, adapter_name="default")
+    model = get_peft_model(model, lora_config, adapter_name="default")
+    prev_model = copy_model(model, prev_model)
     model.print_trainable_parameters()
 
     tokenizer = AutoTokenizer.from_pretrained(training_args.model_id)
@@ -371,7 +415,6 @@ def main(training_args: TrainingArgs):
         print(f"Starting to train with {n_tries} steps")
         print("Travel map:", env.travel_map)
         print("Travel path:", env.travel_path)
-        previous_model = None
         episode_cumulative_returns = 0
         episode_cumulative_rewards = 0
 
@@ -394,25 +437,29 @@ def main(training_args: TrainingArgs):
 
             rewards: torch.Tensor = torch.tensor(rewards, dtype=model.dtype).unsqueeze(1)
             returns = (rewards - rewards.mean()) / (rewards.std() + training_args.advantage_eps)
+            returns = returns.to(model.device)
+            print(f"rewards: {rewards}")
+            print(f"returns: {returns}")
 
-            # save copy of the model for subsequent updates
-            model_copy = copy_model(model, base_model=base_model, lora_config=lora_config)
-
-            if returns.mean() == 0:
+            if (returns == 0).all():
                 print("All returns are 0, skipping update")
                 continue
 
+            # copy lora weights from model to prev_model, used to compute the old
+            # log probs in the loss calculation
+            prev_model = copy_model(model, prev_model)
+
             # update the model
             model, loss, kl, grad_norm = update_policy(
+                action_batch,
                 returns,
                 optimizer,
                 tokenizer,
                 objective,
                 training_args,
                 model,
-                previous_model,
+                prev_model,
                 reference_model,
-                action_batch,
             )
             episode_cumulative_returns += returns.squeeze().sum()
             episode_cumulative_rewards += rewards.sum()
@@ -431,7 +478,7 @@ def main(training_args: TrainingArgs):
             )
 
             # set previous model for the next update
-            previous_model = model_copy
+            prev_model = copy_model(model, prev_model)
 
             if step_action is not None:
                 # If the action batch contains at least one item with the correct
