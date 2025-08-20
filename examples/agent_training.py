@@ -31,7 +31,6 @@ python examples/agent_training.py \
 
 from dataclasses import dataclass
 from functools import partial
-from typing import cast
 
 import tiktoken
 import torch
@@ -61,7 +60,7 @@ from aigym.types import Action, ActionBatch, Observation, RolloutBatch
 class TrainingArgs:
     n_episodes: int = 10
     model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"
-    ref_model_id: str = "Qwen/Qwen2.5-3B-Instruct"
+    ref_model_id: str = None  # only takes effect with use_lora=False
     optim: str = "adamw"
     lr: float = 1e-4
     group_size: int = 4
@@ -69,6 +68,7 @@ class TrainingArgs:
     clip_eps: float = 0.2
     kl_weight: float = 0.01
     max_grad_norm: float = 5.0
+    use_lora: bool = True
     use_bnb_quantization: bool = False
     enable_gradient_checkpointing: bool = False
     n_tries_per_hop: int = 10
@@ -91,16 +91,18 @@ def masked_mean(
 
 def copy_model(
     model: PreTrainedModel | PeftModelForCausalLM,
-    model_copy: PreTrainedModel | PeftModelForCausalLM,
+    copy_target: PreTrainedModel | PeftModelForCausalLM,
 ) -> PreTrainedModel:
     if isinstance(model, PeftModelForCausalLM):
-        model = cast(PeftModelForCausalLM, model)
-        model_copy.load_state_dict({k: v.clone() if "lora" in k else v for k, v in model.state_dict().items()})
+        model.save_pretrained("./adapter_copy", adapter_name="model")
+        # NOTE: copy_target is actually the same underlying PeftModelForCausalLM object as model.
+        # just writing it this way for clarity
+        copy_target.load_adapter("./adapter_copy", adapter_name="prev_model", is_trainable=False)
     else:
-        model_copy = type(model)(model.config)
-        model_copy.load_state_dict({k: v.clone() for k, v in model.state_dict().items()})
+        copy_target = type(model)(model.config)
+        copy_target.load_state_dict({k: v.clone() for k, v in model.state_dict().items()})
 
-    return model_copy
+    return copy_target
 
 
 class GRPOLoss(nn.Module):
@@ -141,7 +143,7 @@ def approx_kl_divergence(
     """
     Reference: http://joschu.net/blog/kl-approx.html
     """
-    log_ratio = log_probs_ref.float() - log_probs.float()
+    log_ratio = log_probs_ref - log_probs
     if action_mask is not None:
         log_ratio = log_ratio * action_mask
     return log_ratio.exp() - log_ratio - 1
@@ -189,8 +191,8 @@ def reward_function(action: Action, observation: Observation) -> float:
 @torch.no_grad()
 def policy(
     training_args: TrainingArgs,
-    model: PreTrainedModel,
-    tokenizer: AutoTokenizer,
+    model: PreTrainedModel | PeftModelForCausalLM,
+    tokenizer: PreTrainedTokenizer,
     generation_config: GenerationConfig,
     prompt: str,
 ) -> RolloutBatch:
@@ -201,6 +203,9 @@ def policy(
 
     # generate completions
     model.eval()
+    if isinstance(model, PeftModelForCausalLM):
+        model.set_adapter("model")
+
     with torch.no_grad():
         sequence_ids = model.generate(
             **model_inputs,
@@ -272,9 +277,9 @@ def update_policy(
     tokenizer: PreTrainedTokenizer,
     objective: GRPOLoss,
     training_args: TrainingArgs,
-    model: PreTrainedModel,
-    previous_model: PreTrainedModel | None,
-    reference_model: PreTrainedModel,
+    model: PreTrainedModel | PeftModelForCausalLM,
+    previous_model: PreTrainedModel | PeftModelForCausalLM,
+    reference_model: PreTrainedModel | PeftModelForCausalLM,
 ):
     model.train()
     optimizer.zero_grad()
@@ -286,11 +291,17 @@ def update_policy(
         training_args.use_original_sequence_ids,
     )
 
+    if isinstance(model, PeftModelForCausalLM):
+        model.set_adapter("model")
     log_probs = compute_log_probs(model, sequence_ids, attention_mask)
+
     with torch.no_grad():
-        log_probs_old = (
-            log_probs if previous_model is None else compute_log_probs(previous_model, sequence_ids, attention_mask)
-        )
+        if isinstance(previous_model, PeftModelForCausalLM):
+            previous_model.set_adapter("prev_model")
+        log_probs_old = compute_log_probs(previous_model, sequence_ids, attention_mask)
+
+        if isinstance(reference_model, PeftModelForCausalLM):
+            reference_model.set_adapter("model")
         log_probs_ref = compute_log_probs(reference_model, sequence_ids, attention_mask)
 
     loss, kl = objective(
@@ -346,37 +357,37 @@ def main(training_args: TrainingArgs):
             bnb_4bit_use_double_quant=True,
         )
 
-    reference_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
-        training_args.ref_model_id or training_args.model_id,
-        torch_dtype="auto",
-        quantization_config=bnb_config,
-    ).to(device)
-
-    prev_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
-        training_args.ref_model_id or training_args.model_id,
-        torch_dtype="auto",
-        quantization_config=bnb_config,
-    ).to(device)
-
     model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
         training_args.model_id,
         torch_dtype="auto",
         quantization_config=bnb_config,
     ).to(device)
 
-    reference_model = get_peft_model(reference_model, lora_config, adapter_name="default")
-    prev_model = get_peft_model(prev_model, lora_config, adapter_name="default")
-    model = get_peft_model(model, lora_config, adapter_name="default")
-    prev_model = copy_model(model, prev_model)
-    model.print_trainable_parameters()
+    if training_args.use_lora:
+        model: PeftModelForCausalLM = get_peft_model(model, lora_config, adapter_name="model")
+        model.save_pretrained("./adapter", adapter_name="reference")
+        model.load_adapter("./adapter", adapter_name="prev_model", is_trainable=False)
+        model.load_adapter("./adapter", adapter_name="model", is_trainable=False)
 
-    reference_model.set_adapter("default")
-    prev_model.set_adapter("default")
-    model.set_adapter("default")
+        prev_model: PeftModelForCausalLM = model
+        reference_model: PeftModelForCausalLM = model
+    else:
+        prev_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
+            training_args.model_id,
+            torch_dtype="auto",
+            quantization_config=bnb_config,
+        ).to(device)
+
+        reference_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
+            training_args.ref_model_id or training_args.model_id,
+            torch_dtype="auto",
+            quantization_config=bnb_config,
+        ).to(device)
 
     tokenizer = AutoTokenizer.from_pretrained(training_args.model_id)
-
     reference_model.eval()
+    prev_model.eval()
+    model.eval()
 
     if training_args.enable_gradient_checkpointing:
         model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
@@ -522,3 +533,10 @@ if __name__ == "__main__":
     parser = HfArgumentParser(TrainingArgs)
     training_args, *_ = parser.parse_args_into_dataclasses()
     main(training_args)
+
+
+# TODO:
+# - implement experience replay buffer where we store previous experiences (action, reward, etc.)
+#   so that we can sample from them to supplement the current batch
+# - add additional reward for exactly formatted actions vs. parse-able actions
+#   (thought and answer tags can be extracted, but don't exactly follow the output format)
