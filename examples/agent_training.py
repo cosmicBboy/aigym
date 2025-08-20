@@ -22,8 +22,8 @@ python examples/agent_training.py \
     --model_id Qwen/Qwen2.5-3B-Instruct \
     --enable_gradient_checkpointing \
     --n_tries_per_hop 10 \
-    --rollout_min_new_tokens 256 \
-    --rollout_max_new_tokens 512 \
+    --rollout_min_new_tokens 128 \
+    --rollout_max_new_tokens 256 \
     --group_size 4 \
     --wandb_project aigym-agent-training
 ```
@@ -97,7 +97,8 @@ def copy_model(
         model.save_pretrained("./adapter_copy", adapter_name="model")
         # NOTE: copy_target is actually the same underlying PeftModelForCausalLM object as model.
         # just writing it this way for clarity
-        copy_target.load_adapter("./adapter_copy", adapter_name="prev_model", is_trainable=False)
+        copy_target.delete_adapter("prev_model")
+        copy_target.load_adapter("./adapter_copy/model", adapter_name="prev_model", is_trainable=False)
     else:
         copy_target = type(model)(model.config)
         copy_target.load_state_dict({k: v.clone() for k, v in model.state_dict().items()})
@@ -121,15 +122,13 @@ class GRPOLoss(nn.Module):
         returns: torch.Tensor,
         action_mask: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        kl = approx_kl_divergence(
+        kl, log_ratio_exp = approx_kl_divergence(
             log_probs=log_probs,
             log_probs_ref=log_probs_ref,
             action_mask=action_mask,
         )
-
-        ratio = (log_probs - log_probs_old).exp()
-        surr1 = ratio * returns
-        surr2 = ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * returns
+        surr1 = log_ratio_exp * returns
+        surr2 = log_ratio_exp.clamp(1 - self.clip_eps, 1 + self.clip_eps) * returns
         loss = -torch.min(surr1, surr2) + self.kl_weight * kl
         loss = masked_mean(loss, action_mask, dim=-1).mean()
         return loss, kl.mean()
@@ -146,7 +145,8 @@ def approx_kl_divergence(
     log_ratio = log_probs_ref - log_probs
     if action_mask is not None:
         log_ratio = log_ratio * action_mask
-    return log_ratio.exp() - log_ratio - 1
+    log_ratio_exp = log_ratio.exp()
+    return log_ratio_exp - log_ratio - 1, log_ratio_exp
 
 
 def compute_log_probs(
@@ -162,10 +162,10 @@ def compute_log_probs(
         position_ids=position_ids,
         use_cache=False,
     )
-    logits = output["logits"][:, :-1].to(model.dtype)
-    output_ids = sequence_ids[:, 1:]
-
+    logits = output["logits"][:, :-1]
     log_probs = F.log_softmax(logits, dim=-1)
+
+    output_ids = sequence_ids[:, 1:]
     return log_probs.gather(dim=-1, index=output_ids.unsqueeze(-1)).squeeze(-1)
 
 
@@ -283,13 +283,19 @@ def update_policy(
 ):
     model.train()
     optimizer.zero_grad()
-
     sequence_ids, action_mask, attention_mask = reconstruct_sequence_ids(
         action_batch,
         tokenizer,
         model,
         training_args.use_original_sequence_ids,
     )
+
+    # Print parameters that require gradients
+    def _requires_grad(model: PreTrainedModel) -> bool:
+        print("\nParameters requiring gradients:")
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                print(f"{name}: requires_grad={param.requires_grad}, shape={param.shape}")
 
     if isinstance(model, PeftModelForCausalLM):
         model.set_adapter("model")
@@ -301,7 +307,7 @@ def update_policy(
         log_probs_old = compute_log_probs(previous_model, sequence_ids, attention_mask)
 
         if isinstance(reference_model, PeftModelForCausalLM):
-            reference_model.set_adapter("model")
+            reference_model.set_adapter("reference_model")
         log_probs_ref = compute_log_probs(reference_model, sequence_ids, attention_mask)
 
     loss, kl = objective(
@@ -320,6 +326,7 @@ def update_policy(
     grad_norm = clip_grad_norm_(model.parameters(), max_norm=training_args.max_grad_norm)
     print(f"loss={loss: .10f}, kl={kl: .10f}, grad_norm={grad_norm: .10f}")
     optimizer.step()
+
     return model, loss, kl, grad_norm
 
 
@@ -339,7 +346,8 @@ def main(training_args: TrainingArgs):
     else:
         device = "cpu"
 
-    target_lora_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    # target_lora_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    target_lora_modules = ["q_proj", "k_proj", "v_proj"]
     lora_config = LoraConfig(
         r=8,
         lora_alpha=64,
@@ -355,6 +363,7 @@ def main(training_args: TrainingArgs):
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.float16,
             bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_storage=torch.bfloat16,
         )
 
     model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
@@ -365,12 +374,15 @@ def main(training_args: TrainingArgs):
 
     if training_args.use_lora:
         model: PeftModelForCausalLM = get_peft_model(model, lora_config, adapter_name="model")
-        model.save_pretrained("./adapter", adapter_name="reference")
-        model.load_adapter("./adapter", adapter_name="prev_model", is_trainable=False)
-        model.load_adapter("./adapter", adapter_name="model", is_trainable=False)
+        model.save_pretrained("./adapter")
+        model.load_adapter("./adapter/model", adapter_name="prev_model", is_trainable=False)
+        model.load_adapter("./adapter/model", adapter_name="reference_model", is_trainable=False)
 
+        print("Using LoRA")
+        # assign these variables to previous and reference models for consistency
         prev_model: PeftModelForCausalLM = model
         reference_model: PeftModelForCausalLM = model
+        model.print_trainable_parameters()
     else:
         prev_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
             training_args.model_id,
@@ -396,6 +408,18 @@ def main(training_args: TrainingArgs):
         optimizer = optim.AdamW(model.parameters(), lr=training_args.lr)
     elif training_args.optim == "sgd":
         optimizer = optim.SGD(model.parameters(), lr=training_args.lr)
+    elif training_args.optim == "sgd_8bit":
+        import bitsandbytes.optim
+
+        optimizer = bitsandbytes.optim.SGD8bit(model.parameters(), lr=training_args.lr, momentum=0.5)
+    elif training_args.optim == "adamw_8bit":
+        import bitsandbytes.optim
+
+        optimizer = bitsandbytes.optim.AdamW8bit(model.parameters(), lr=training_args.lr)
+    elif training_args.optim == "paged_adamw_8bit":
+        import bitsandbytes.optim
+
+        optimizer = bitsandbytes.optim.PagedAdamW8bit(model.parameters(), lr=training_args.lr)
     else:
         raise ValueError(f"Invalid optimizer: {training_args.optim}")
 
@@ -494,8 +518,8 @@ def main(training_args: TrainingArgs):
             rewards_sum = rewards.sum()
             total_cumulative_returns += returns_sum
             total_cumulative_rewards += rewards_sum
-            episode_cumulative_returns += returns.squeeze().sum()
-            episode_cumulative_rewards += rewards.sum()
+            episode_cumulative_returns += returns_sum
+            episode_cumulative_rewards += rewards_sum
 
             print(f"step {step}, rewards: {rewards}, returns: {returns}")
             wandb.log(
