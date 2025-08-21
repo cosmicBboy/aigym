@@ -5,6 +5,8 @@ from typing import Literal
 import torch
 from pydantic import BaseModel, field_validator
 
+ParseType = Literal["exact_match", "parseable", "invalid"]
+
 
 class RolloutBatch(BaseModel, arbitrary_types_allowed=True):
     """Metadata for an action, used for training."""
@@ -22,6 +24,7 @@ class Action(BaseModel):
     action: Literal["visit_url", "backward", "forward"] | None = None
     url: str | None = None
     reasoning_trace: str | None = None
+    parse_type: ParseType | None = None
 
     @field_validator("url")
     def validate_url(cls, v: str | None) -> str | None:

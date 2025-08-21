@@ -15,12 +15,27 @@ Run the script:
 python examples/agent_training.py
 ```
 
-Example using cli args:
+Examples using cli args:
+```bash
+python examples/agent_training.py \
+    --model_id Qwen/Qwen2.5-0.5B-Instruct \
+    --enable_gradient_checkpointing \
+    --n_hops 1 \
+    --n_tries_per_hop 10 \
+    --rollout_min_new_tokens 64 \
+    --rollout_max_new_tokens 128 \
+    --group_size 2 \
+    --wandb_project aigym-agent-training
+```
+
+With weights and biases:
+
 ```bash
 export WANDB_API_KEY=...
 python examples/agent_training.py \
     --model_id Qwen/Qwen2.5-3B-Instruct \
     --enable_gradient_checkpointing \
+    --n_hops 1 \
     --n_tries_per_hop 10 \
     --rollout_min_new_tokens 256 \
     --rollout_max_new_tokens 512 \
@@ -29,6 +44,7 @@ python examples/agent_training.py \
 ```
 """
 
+import tempfile
 from dataclasses import dataclass
 from functools import partial
 from typing import cast
@@ -38,7 +54,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import wandb
 from peft import LoraConfig, PeftModelForCausalLM, get_peft_model
 from rich import print as rprint
 from torch.nn.utils import clip_grad_norm_
@@ -52,6 +67,7 @@ from transformers import (
 )
 
 import aigym.pprint as pprint
+import wandb
 from aigym.agent import Agent
 from aigym.env import WikipediaGymEnv
 from aigym.types import Action, ActionBatch, Observation, RolloutBatch
@@ -61,7 +77,7 @@ from aigym.types import Action, ActionBatch, Observation, RolloutBatch
 class TrainingArgs:
     n_episodes: int = 10
     model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"
-    ref_model_id: str = "Qwen/Qwen2.5-3B-Instruct"
+    ref_model_id: str | None = None
     optim: str = "adamw"
     lr: float = 1e-4
     group_size: int = 4
@@ -96,7 +112,7 @@ def copy_model(
 ) -> PreTrainedModel:
     if isinstance(model, PeftModelForCausalLM):
         model = cast(PeftModelForCausalLM, model)
-        model_copy.load_state_dict({k: v.clone() if "lora" in k else v for k, v in model.state_dict().items()})
+        model_copy.load_state_dict({k: v.clone() for k, v in model.state_dict().items()})
     else:
         model_copy = type(model)(model.config)
         model_copy.load_state_dict({k: v.clone() for k, v in model.state_dict().items()})
@@ -173,19 +189,26 @@ def reward_function(action: Action, observation: Observation) -> float:
     """Reward function.
 
     - no/invalid action = 0
-    - correctly formatted = 0.25
-    - correct url = 1.0
-    - target url = 2.0
+    - completion is parseable: +0.25
+    - completion is exact match: +0.5
+    - is next url +1.0
+    - is target url +2.0
     """
+    reward = 0
     if action.action is None:
-        return 0
-    elif action.url == observation.next_url:
-        return 1.0
+        return reward
+
+    if action.parse_type == "exact_match":
+        reward += 0.5
+    elif action.parse_type == "parseable":
+        reward += 0.25
+
+    if action.url == observation.next_url:
+        reward += 1.0
     elif action.url == observation.target_url:
-        return 2.0
-    else:
-        # correctly formatted, not next url and target url
-        return 0.25
+        reward += 2.0
+
+    return reward
 
 
 @torch.no_grad()
@@ -369,15 +392,16 @@ def main(training_args: TrainingArgs):
         quantization_config=bnb_config,
     ).to(device)
 
-    reference_model = get_peft_model(reference_model, lora_config, adapter_name="default")
-    reference_model.save_pretrained("./adapter")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        reference_model = get_peft_model(reference_model, lora_config, adapter_name="default")
+        reference_model.save_pretrained(tmp_dir)
 
-    prev_model = get_peft_model(prev_model, lora_config, adapter_name="default")
-    model = get_peft_model(model, lora_config, adapter_name="default")
+        prev_model = get_peft_model(prev_model, lora_config, adapter_name="default")
+        model = get_peft_model(model, lora_config, adapter_name="default")
 
-    prev_model.load_adapter("./adapter", adapter_name="default", is_trainable=False)
-    model.load_adapter("./adapter", adapter_name="default", is_trainable=True)
-    model.print_trainable_parameters()
+        prev_model.load_adapter(tmp_dir, adapter_name="default", is_trainable=False)
+        model.load_adapter(tmp_dir, adapter_name="default", is_trainable=True)
+        model.print_trainable_parameters()
 
     reference_model.set_adapter("default")
     prev_model.set_adapter("default")
@@ -431,7 +455,6 @@ def main(training_args: TrainingArgs):
     env = WikipediaGymEnv(n_hops=training_args.n_hops, lines_per_chunk=None)
     n_tries = int(training_args.n_hops * training_args.n_tries_per_hop)
 
-    total_cumulative_returns = 0
     total_cumulative_rewards = 0
     for episode in range(1, training_args.n_episodes + 1):
         print(f"Starting episode {episode}")
@@ -440,6 +463,7 @@ def main(training_args: TrainingArgs):
         print(f"Starting to train with {n_tries} steps")
         print("Travel map:", env.travel_map)
         print("Travel path:", env.travel_path)
+
         episode_cumulative_returns = 0
         episode_cumulative_rewards = 0
 
@@ -495,12 +519,10 @@ def main(training_args: TrainingArgs):
                     "grad_norm": grad_norm,
                 }
 
-            returns_sum = returns.squeeze().sum()
             rewards_sum = rewards.sum()
-            total_cumulative_returns += returns_sum
             total_cumulative_rewards += rewards_sum
+            episode_cumulative_rewards += rewards_sum
             episode_cumulative_returns += returns.squeeze().sum()
-            episode_cumulative_rewards += rewards.sum()
 
             print(f"step {step}, rewards: {rewards}, returns: {returns}")
             wandb.log(
@@ -509,7 +531,6 @@ def main(training_args: TrainingArgs):
                     "rewards": rewards.mean(),
                     "episode_cumulative_returns": episode_cumulative_returns,
                     "episode_cumulative_rewards": episode_cumulative_rewards,
-                    "total_cumulative_returns": total_cumulative_returns,
                     "total_cumulative_rewards": total_cumulative_rewards,
                     **update_metrics,
                 }

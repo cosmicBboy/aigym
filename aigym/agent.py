@@ -13,7 +13,7 @@ from rich import print as rprint
 from rich.panel import Panel
 
 import aigym.prompts as prompts
-from aigym.types import Action, ActionBatch, Observation, RolloutBatch
+from aigym.types import Action, ActionBatch, Observation, ParseType, RolloutBatch
 
 logger = logging.getLogger(__name__)
 
@@ -73,23 +73,24 @@ class Agent:
         actions = []
         for completion in batch.completions:
             try:
-                action_dict, completion, reasoning_trace = self.parse_completion(completion, observation)
+                action_dict, completion, reasoning_trace, parse_type = self.parse_completion(completion, observation)
             except (json.JSONDecodeError, InvalidActionError) as exc:
                 rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
                 action_dict = None
 
             if action_dict is None:
-                action = Action(completion=completion)
+                action = Action(completion=completion, parse_type="invalid")
             else:
                 try:
                     action = Action(
                         **action_dict,
                         completion=completion,
                         reasoning_trace=reasoning_trace,
+                        parse_type=parse_type,
                     )
                 except ValidationError as exc:
                     rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
-                    action = Action(completion=completion)
+                    action = Action(completion=completion, parse_type="invalid")
 
             actions.append(action)
         return ActionBatch(
@@ -140,8 +141,20 @@ class Agent:
             url_boundaries=", ".join(self.url_boundaries) if self.url_boundaries else "NONE",
         )
 
-    def parse_completion(self, completion: str, observation: Observation) -> tuple[dict, str, str]:
+    def parse_completion(self, completion: str, observation: Observation) -> tuple[dict, str, str, ParseType]:
         import re
+
+        # TODO: do exact match parsing.
+        exact_match = re.search(r"<think>(.*?)</think>\n+<answer>(.*?)</answer>", completion, re.DOTALL)
+        if exact_match:
+            reasoning_trace = exact_match.group(1).strip()
+            answer = exact_match.group(2).strip()
+            try:
+                action = json.loads(answer)
+            except json.JSONDecodeError as exc:
+                logger.info("Could not generate a valid action")
+                raise InvalidActionError(str(exc)) from exc
+            return action, completion, reasoning_trace, "exact_match"
 
         think_match = re.search(r"<think>(.*?)</think>", completion, re.DOTALL)
         reasoning_trace = think_match.group(1).strip() if think_match else ""
@@ -192,7 +205,7 @@ class Agent:
         action_json = json.dumps(action, indent=2)
         # create clean completion
         completion = f"<think>\n{reasoning_trace}\n</think>\n<answer>\n{action_json}\n</answer>"
-        return action, completion, reasoning_trace
+        return action, completion, reasoning_trace, "parseable"
 
     def _url_not_in_context(self, url: str, context: str) -> bool:
         _url = urllib.parse.urlparse(url)
