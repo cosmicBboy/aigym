@@ -147,6 +147,14 @@ def approx_kl_divergence(
     return log_ratio.exp() - log_ratio - 1
 
 
+def chunked_log_softmax(logits, dim=-1, chunk_size=1):
+    chunks = torch.split(logits, chunk_size, dim=0)  # Split along batch dimension
+    log_probs_chunks = []
+    for chunk in chunks:
+        log_probs_chunks.append(F.log_softmax(chunk, dim=dim))
+    return torch.cat(log_probs_chunks, dim=0)
+
+
 def compute_log_probs(
     model: PreTrainedModel,
     sequence_ids: torch.Tensor,
@@ -163,7 +171,7 @@ def compute_log_probs(
     logits = output["logits"][:, :-1].to(model.dtype)
     output_ids = sequence_ids[:, 1:]
 
-    log_probs = F.log_softmax(logits, dim=-1)
+    log_probs = chunked_log_softmax(logits, dim=-1, chunk_size=1)
     return log_probs.gather(dim=-1, index=output_ids.unsqueeze(-1)).squeeze(-1)
 
 
