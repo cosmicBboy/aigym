@@ -8,7 +8,6 @@ import tiktoken
 from google import genai
 from google.genai import types
 from rich import print as rprint
-from rich.panel import Panel
 
 import aigym.pprint as pprint
 from aigym.agent import Agent
@@ -20,7 +19,7 @@ def main():
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     enc = tiktoken.get_encoding("cl100k_base")
 
-    def generate_function(prompt: str) -> Generator[str, None, None]:
+    def policy(prompt: str) -> Generator[str, None, None]:
         for chunk in client.models.generate_content_stream(
             model="gemini-2.0-flash",
             contents=[prompt],
@@ -36,27 +35,34 @@ def main():
             yield delta
 
     agent = Agent(
-        generate_function=generate_function,
+        policy=policy,
         token_encoder=enc,
-        n_retries_per_action=10,
         url_boundaries=["https://en.wikipedia.org"],
     )
 
     env = WikipediaGymEnv(n_hops=3, lines_per_chunk=None)
-    observation, info = env.reset()
-    rprint(f"reset current page to: {observation.url}")
+    # observation, info = env.reset()
+    observation, info = env.reset_manual(
+        start_url="https://en.wikipedia.org/wiki/Chenggong_Reservoir",
+        target_url="https://en.wikipedia.org/wiki/Traditional_Chinese_characters",
+        travel_path=[
+            "https://en.wikipedia.org/wiki/Chenggong_Reservoir",
+            "https://en.wikipedia.org/wiki/Water_Resources_Agency",
+            "https://en.wikipedia.org/wiki/Traditional_Chinese_characters",
+        ],
+    )
 
     for step in range(1, 101):
         pprint.print_observation(observation)
         pprint.print_context(observation)
         action = agent.act(observation)
+        if action is None:
+            rprint(f"No action taken at step {step}")
+            continue
         pprint.print_action(action)
         observation, reward, terminated, truncated, info = env.step(action)
-        rprint(
-            f"Next observation: {observation.url}, position {observation.current_chunk} / {observation.total_chunks}"
-        )
         if terminated or truncated:
-            rprint(Panel.fit(f"Episode terminated or truncated at step {step}", border_style="spring_green3"))
+            rprint(f"Episode terminated or truncated at step {step}")
             break
 
     rprint("Task finished!")

@@ -50,6 +50,20 @@ openai = [
 google-genai = [
     "google-genai",
 ]
+trl = [
+    "trl",
+    "torch>=2.7.0",
+    "numpy>2",
+]
+peft = [
+    "peft>=0.17.0",
+]
+bitsandbytes = [
+    "bitsandbytes>=0.42.0",
+]
+wandb = [
+    "wandb",
+]
 
 [dependency-groups]
 dev = [

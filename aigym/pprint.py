@@ -28,17 +28,18 @@ def print_context(observation: Observation, head: int = 500, tail: int = 500):
     rprint(Panel.fit(rich.markup.escape(context), title="Context", border_style="yellow"))
 
 
-def print_action(action: Action):
-    rprint(
-        Panel.fit(
-            textwrap.dedent(
-                f"""
-                [bold]Action[/bold]: {action.action}
-                [bold]URL[/bold]: {action.url}
-                [bold]Reasoning[/bold]: {action.reason_summary}
-                """
-            ).strip(),
-            title="Action",
-            border_style="green",
-        )
-    )
+def print_action(action: Action, index: int | None = None):
+    if action.action is None:
+        msg = f"Invalid completion:\n {rich.markup.escape(action.completion)}"
+        color = "red"
+    else:
+        msg = textwrap.dedent(
+            f"""
+            [bold]Action[/bold]: {action.action}
+            [bold]URL[/bold]: {action.url}
+            [bold]Reasoning[/bold]: {action.reason_summary}
+            """
+        ).strip()
+        color = "green"
+
+    rprint(Panel.fit(msg, title=f"Action {index}" if index is not None else "Action", border_style=color))
