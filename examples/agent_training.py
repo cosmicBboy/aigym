@@ -71,6 +71,7 @@ class TrainingArgs:
     max_grad_norm: float = 5.0
     use_bnb_quantization: bool = False
     enable_gradient_checkpointing: bool = False
+    n_hops: int = 1
     n_tries_per_hop: int = 10
     rollout_min_new_tokens: int = 64
     rollout_max_new_tokens: int = 128
@@ -147,20 +148,13 @@ def approx_kl_divergence(
     return log_ratio.exp() - log_ratio - 1
 
 
-def chunked_log_softmax(logits, dim=-1, chunk_size=1):
-    chunks = torch.split(logits, chunk_size, dim=0)  # Split along batch dimension
-    log_probs_chunks = []
-    for chunk in chunks:
-        log_probs_chunks.append(F.log_softmax(chunk, dim=dim))
-    return torch.cat(log_probs_chunks, dim=0)
-
-
 def compute_log_probs(
     model: PreTrainedModel,
     sequence_ids: torch.Tensor,
     attention_mask: torch.Tensor,
 ):
     position_ids = attention_mask.long().cumsum(dim=-1) - 1
+    position_ids = position_ids.clone()  # Clone to avoid modifying input
     position_ids.masked_fill_(mask=(attention_mask == 0), value=1)
     output = model.forward(
         input_ids=sequence_ids,
@@ -168,10 +162,10 @@ def compute_log_probs(
         position_ids=position_ids,
         use_cache=False,
     )
-    logits = output["logits"][:, :-1].to(model.dtype)
+    logits = output["logits"][:, :-1]
     output_ids = sequence_ids[:, 1:]
 
-    log_probs = chunked_log_softmax(logits, dim=-1, chunk_size=1)
+    log_probs = F.log_softmax(logits, dim=-1)
     return log_probs.gather(dim=-1, index=output_ids.unsqueeze(-1)).squeeze(-1)
 
 
@@ -311,7 +305,9 @@ def update_policy(
 
     if not loss.isfinite():
         print(f"Loss not finite, skipping backward, loss={loss}, returns: {returns}")
-        return previous_model
+        del log_probs, log_probs_old, log_probs_ref, sequence_ids, action_mask, attention_mask, loss, kl
+        torch.cuda.empty_cache()
+        return model
 
     loss.backward()
     grad_norm = clip_grad_norm_(model.parameters(), max_norm=training_args.max_grad_norm)
@@ -432,9 +428,8 @@ def main(training_args: TrainingArgs):
         url_boundaries=["https://en.wikipedia.org"],
     )
 
-    n_hops = 1
-    env = WikipediaGymEnv(n_hops=n_hops, lines_per_chunk=None)
-    n_tries = int(n_hops * training_args.n_tries_per_hop)
+    env = WikipediaGymEnv(n_hops=training_args.n_hops, lines_per_chunk=None)
+    n_tries = int(training_args.n_hops * training_args.n_tries_per_hop)
 
     total_cumulative_returns = 0
     total_cumulative_rewards = 0
