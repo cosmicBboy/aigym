@@ -63,6 +63,7 @@ from transformers import (
     GenerationConfig,
     PreTrainedModel,
     PreTrainedTokenizer,
+    Qwen2ForCausalLM,
 )
 
 import aigym.pprint as pprint
@@ -96,7 +97,6 @@ class TrainingArgs:
     rollout_repetition_penalty: float = 1.1
     rollout_no_repeat_ngram_size: int = 0
     wandb_project: str = None
-    use_original_sequence_ids: bool = True
 
 
 def masked_mean(
@@ -172,28 +172,30 @@ def approx_kl_divergence(
 
 
 def compute_log_probs(
-    model: PreTrainedModel,
+    model: Qwen2ForCausalLM,
     sequence_ids: torch.Tensor,
     attention_mask: torch.Tensor,
+    prompt_length: int,
 ):
     position_ids = attention_mask.long().cumsum(dim=-1) - 1
     position_ids = position_ids.clone()  # Clone to avoid modifying input
     position_ids.masked_fill_(mask=(attention_mask == 0), value=1)
+
+    torch.cuda.empty_cache()
+
     output = model.forward(
         input_ids=sequence_ids,
         attention_mask=attention_mask,
         position_ids=position_ids,
         use_cache=False,
     )
-    logits = output["logits"][:, :-1]
-    output_ids = sequence_ids[:, 1:]
+    # truncate logits to only include the action tokens
+    logits = output["logits"][:, prompt_length:-1].clone()
+    output_ids = sequence_ids[:, prompt_length + 1 :].clone()
 
-    torch.cuda.empty_cache()
+    del sequence_ids, output
 
-    def checkpointed_log_softmax(logits, dim=-1):
-        return torch.utils.checkpoint.checkpoint(lambda x: F.log_softmax(x, dim=dim), logits, use_reentrant=False)
-
-    log_probs = checkpointed_log_softmax(logits, dim=-1)
+    log_probs = F.log_softmax(logits, dim=-1)
     return log_probs.gather(dim=-1, index=output_ids.unsqueeze(-1)).squeeze(-1)
 
 
@@ -255,6 +257,7 @@ def policy(
     return RolloutBatch(
         sequence_ids=sequence_ids,
         input_ids=model_inputs["input_ids"],
+        attention_mask=model_inputs["attention_mask"],
         completions=completions,
     )
 
@@ -263,7 +266,6 @@ def reconstruct_sequence_ids(
     action_batch: ActionBatch,
     tokenizer: PreTrainedTokenizer,
     model: PreTrainedModel,
-    use_original_sequence_ids: bool,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Reconstructs clean sequence ids from the action batch.
 
@@ -278,29 +280,13 @@ def reconstruct_sequence_ids(
     if action_batch.log_probs is not None:
         log_probs_old = action_batch.log_probs.detach()
 
-    if use_original_sequence_ids:
-        sequence_ids = action_batch.sequence_ids.detach()
-    else:
-        completion_token_ids = []
-        for action in action_batch.actions:
-            completion_token_ids.append(tokenizer.encode(action.completion))
-
-        batch_size = len(action_batch.actions)
-        sequence_ids = torch.full(
-            (batch_size, max(len(ids) for ids in completion_token_ids)),
-            tokenizer.eos_token_id,
-            dtype=torch.long,
-        ).to(model.device)
-
-        for i, ids in enumerate(completion_token_ids):
-            sequence_ids[i, : len(ids)] = torch.tensor(ids)
-        sequence_ids = torch.cat([action_batch.input_ids.to(model.device), sequence_ids], dim=1)
+    sequence_ids = action_batch.sequence_ids.detach()
 
     # action mask makes sure end of sequence tokens are masked out of the
     # loss calculation
-    action_mask = torch.zeros_like(sequence_ids, dtype=torch.bool)
-    action_mask[:, action_batch.input_ids.shape[1] :] = True
-    action_mask[sequence_ids == tokenizer.eos_token_id] = False
+    completion_ids = sequence_ids[:, action_batch.input_ids.shape[1] :]
+    action_mask = torch.full_like(completion_ids, fill_value=True, dtype=torch.bool)
+    action_mask[completion_ids == tokenizer.eos_token_id] = False
     action_mask = action_mask[:, 1:]
 
     pad_token_id = tokenizer.eos_token_id
@@ -326,13 +312,24 @@ def update_policy(
         action_batch,
         tokenizer,
         model,
-        training_args.use_original_sequence_ids,
     )
 
-    wandb.log({"sequence_length": sequence_ids.shape[1]})
-    log_probs = compute_log_probs(model, sequence_ids, attention_mask)
+    # Idea: trucate or zero out the logits such that only the action tokens are
+    # used in the per-token log probabilities
+    prompt_length = action_batch.input_ids.shape[1]
+    log_probs = compute_log_probs(
+        model,
+        sequence_ids,
+        attention_mask,
+        prompt_length=prompt_length,
+    )
     with torch.no_grad():
-        log_probs_ref = compute_log_probs(reference_model, sequence_ids, attention_mask)
+        log_probs_ref = compute_log_probs(
+            reference_model,
+            sequence_ids,
+            attention_mask,
+            prompt_length=prompt_length,
+        )
 
     loss, kl = objective(
         log_probs=log_probs,

@@ -14,6 +14,7 @@ class RolloutBatch(BaseModel, arbitrary_types_allowed=True):
 
     sequence_ids: torch.Tensor
     input_ids: torch.Tensor
+    attention_mask: torch.Tensor
     completions: list[str]
     log_probs: torch.Tensor | None = None
 
