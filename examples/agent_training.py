@@ -24,8 +24,7 @@ python examples/agent_training.py \
     --n_tries_per_hop 10 \
     --rollout_min_new_tokens 64 \
     --rollout_max_new_tokens 128 \
-    --group_size 2 \
-    --wandb_project aigym-agent-training
+    --group_size 4
 ```
 
 With weights and biases:
@@ -85,7 +84,7 @@ class TrainingArgs:
     clip_eps: float = 0.2
     kl_weight: float = 0.01
     max_grad_norm: float = 5.0
-    use_lora: bool = False
+    use_lora: bool = True
     use_bnb_quantization: bool = False
     enable_gradient_checkpointing: bool = False
     n_hops: int = 1
@@ -132,6 +131,7 @@ class GRPOLoss(nn.Module):
     def forward(
         self,
         log_probs: torch.Tensor,
+        log_probs_old: torch.Tensor | None,
         log_probs_ref: torch.Tensor,
         returns: torch.Tensor,
         action_mask: torch.Tensor,
@@ -142,7 +142,11 @@ class GRPOLoss(nn.Module):
             action_mask=action_mask,
         )
 
-        ratio = (log_probs - log_probs_ref).exp()
+        if log_probs_old is not None:
+            ratio = (log_probs - log_probs_old).exp()
+        else:
+            ratio = log_probs
+
         surr1 = ratio * returns
         surr2 = ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * returns
         loss = -torch.min(surr1, surr2) + self.kl_weight * kl
@@ -264,6 +268,11 @@ def reconstruct_sequence_ids(
     padding tokens from the loss calculation.
     """
 
+    log_probs_old = None
+
+    if action_batch.log_probs is not None:
+        log_probs_old = action_batch.log_probs.detach()
+
     if use_original_sequence_ids:
         sequence_ids = action_batch.sequence_ids.detach()
     else:
@@ -292,7 +301,7 @@ def reconstruct_sequence_ids(
     pad_token_id = tokenizer.eos_token_id
     attention_mask = sequence_ids != pad_token_id
 
-    return sequence_ids, action_mask, attention_mask
+    return sequence_ids, action_mask, attention_mask, log_probs_old
 
 
 def update_policy(
@@ -308,20 +317,20 @@ def update_policy(
     model.train()
     optimizer.zero_grad()
 
-    sequence_ids, action_mask, attention_mask = reconstruct_sequence_ids(
+    sequence_ids, action_mask, attention_mask, log_probs_old = reconstruct_sequence_ids(
         action_batch,
         tokenizer,
         model,
         training_args.use_original_sequence_ids,
     )
 
-    model.print_trainable_parameters()
     log_probs = compute_log_probs(model, sequence_ids, attention_mask)
     with torch.no_grad():
         log_probs_ref = compute_log_probs(reference_model, sequence_ids, attention_mask)
 
     loss, kl = objective(
         log_probs=log_probs,
+        log_probs_old=log_probs_old,
         log_probs_ref=log_probs_ref,
         returns=returns,
         action_mask=action_mask,
@@ -329,7 +338,7 @@ def update_policy(
 
     if not loss.isfinite():
         print(f"Loss not finite, skipping backward, loss={loss}, returns: {returns}")
-        del log_probs, log_probs_ref, sequence_ids, action_mask, attention_mask, loss, kl
+        del log_probs, log_probs_old, log_probs_ref, sequence_ids, action_mask, attention_mask, loss, kl
         torch.cuda.empty_cache()
         return model
 
@@ -364,15 +373,15 @@ def main(training_args: TrainingArgs):
     reference_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
         training_args.ref_model_id or training_args.model_id,
         torch_dtype="auto",
-        device_map="auto",
         quantization_config=bnb_config,
+        device_map="auto",
     )
 
     model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
         training_args.model_id,
         torch_dtype="auto",
-        device_map="auto",
         quantization_config=bnb_config,
+        device_map="auto",
     )
 
     lora_config = None
@@ -443,6 +452,14 @@ def main(training_args: TrainingArgs):
 
     env = WikipediaGymEnv(n_hops=training_args.n_hops, lines_per_chunk=None)
     n_tries = int(training_args.n_hops * training_args.n_tries_per_hop)
+
+    # Separate rollout step from model updates, i.e. implement an experience
+    # replay buffer so that you can sample from it, then update the model.
+    # This clarifies the roll of the `old_log_probs` in the loss calculation.
+    # You'll have multiple rollouts, you'll sample from this buffer in minibatches
+    # so therefore the current model log probs will start to deviate from the
+    # old log probs.
+    # See: https://www.perplexity.ai/search/can-you-give-me-the-basic-grpo-g3kdNUI4RSmbAtoxi_HcjQ#6
 
     total_cumulative_rewards = 0
     for episode in range(1, training_args.n_episodes + 1):
