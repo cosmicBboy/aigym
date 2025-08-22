@@ -11,4 +11,4 @@ publish: build
 	twine upload dist/*
 
 pip-install:
-    pip install -U pip && pip install -e '.[peft]'
+	pip install -U pip && pip install -e '.[peft,wandb,bitsandbytes]'

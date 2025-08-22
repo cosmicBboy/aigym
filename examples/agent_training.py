@@ -85,6 +85,7 @@ class TrainingArgs:
     clip_eps: float = 0.2
     kl_weight: float = 0.01
     max_grad_norm: float = 5.0
+    use_lora: bool = False
     use_bnb_quantization: bool = False
     enable_gradient_checkpointing: bool = False
     n_hops: int = 1
@@ -131,7 +132,6 @@ class GRPOLoss(nn.Module):
     def forward(
         self,
         log_probs: torch.Tensor,
-        log_probs_old: torch.Tensor,
         log_probs_ref: torch.Tensor,
         returns: torch.Tensor,
         action_mask: torch.Tensor,
@@ -142,7 +142,7 @@ class GRPOLoss(nn.Module):
             action_mask=action_mask,
         )
 
-        ratio = (log_probs - log_probs_old).exp()
+        ratio = (log_probs - log_probs_ref).exp()
         surr1 = ratio * returns
         surr2 = ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * returns
         loss = -torch.min(surr1, surr2) + self.kl_weight * kl
@@ -158,7 +158,7 @@ def approx_kl_divergence(
     """
     Reference: http://joschu.net/blog/kl-approx.html
     """
-    log_ratio = log_probs_ref.float() - log_probs.float()
+    log_ratio = log_probs_ref - log_probs
     if action_mask is not None:
         log_ratio = log_ratio * action_mask
     return log_ratio.exp() - log_ratio - 1
@@ -181,7 +181,12 @@ def compute_log_probs(
     logits = output["logits"][:, :-1]
     output_ids = sequence_ids[:, 1:]
 
-    log_probs = F.log_softmax(logits, dim=-1)
+    torch.cuda.empty_cache()
+
+    def checkpointed_log_softmax(logits, dim=-1):
+        return torch.utils.checkpoint.checkpoint(lambda x: F.log_softmax(x, dim=dim), logits, use_reentrant=False)
+
+    log_probs = checkpointed_log_softmax(logits, dim=-1)
     return log_probs.gather(dim=-1, index=output_ids.unsqueeze(-1)).squeeze(-1)
 
 
@@ -260,7 +265,7 @@ def reconstruct_sequence_ids(
     """
 
     if use_original_sequence_ids:
-        sequence_ids = action_batch.sequence_ids
+        sequence_ids = action_batch.sequence_ids.detach()
     else:
         completion_token_ids = []
         for action in action_batch.actions:
@@ -298,7 +303,6 @@ def update_policy(
     objective: GRPOLoss,
     training_args: TrainingArgs,
     model: PreTrainedModel,
-    previous_model: PreTrainedModel | None,
     reference_model: PreTrainedModel,
 ):
     model.train()
@@ -311,16 +315,13 @@ def update_policy(
         training_args.use_original_sequence_ids,
     )
 
+    model.print_trainable_parameters()
     log_probs = compute_log_probs(model, sequence_ids, attention_mask)
     with torch.no_grad():
-        log_probs_old = (
-            log_probs if previous_model is None else compute_log_probs(previous_model, sequence_ids, attention_mask)
-        )
         log_probs_ref = compute_log_probs(reference_model, sequence_ids, attention_mask)
 
     loss, kl = objective(
         log_probs=log_probs,
-        log_probs_old=log_probs_old,
         log_probs_ref=log_probs_ref,
         returns=returns,
         action_mask=action_mask,
@@ -328,7 +329,7 @@ def update_policy(
 
     if not loss.isfinite():
         print(f"Loss not finite, skipping backward, loss={loss}, returns: {returns}")
-        del log_probs, log_probs_old, log_probs_ref, sequence_ids, action_mask, attention_mask, loss, kl
+        del log_probs, log_probs_ref, sequence_ids, action_mask, attention_mask, loss, kl
         torch.cuda.empty_cache()
         return model
 
@@ -349,22 +350,8 @@ def main(training_args: TrainingArgs):
     enc = tiktoken.get_encoding("cl100k_base")
 
     print("Loading model")
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif torch.backends.mps.is_available():
-        device = "mps"
-    else:
-        device = "cpu"
+    tokenizer = AutoTokenizer.from_pretrained(training_args.model_id)
 
-    target_lora_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
-    lora_config = LoraConfig(
-        r=8,
-        lora_alpha=64,
-        target_modules=target_lora_modules,
-        lora_dropout=0.1,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
     bnb_config = None
     if training_args.use_bnb_quantization:
         bnb_config = BitsAndBytesConfig(
@@ -377,37 +364,39 @@ def main(training_args: TrainingArgs):
     reference_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
         training_args.ref_model_id or training_args.model_id,
         torch_dtype="auto",
+        device_map="auto",
         quantization_config=bnb_config,
-    ).to(device)
-
-    prev_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
-        training_args.ref_model_id or training_args.model_id,
-        torch_dtype="auto",
-        quantization_config=bnb_config,
-    ).to(device)
+    )
 
     model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
         training_args.model_id,
         torch_dtype="auto",
+        device_map="auto",
         quantization_config=bnb_config,
-    ).to(device)
+    )
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        reference_model = get_peft_model(reference_model, lora_config, adapter_name="default")
-        reference_model.save_pretrained(tmp_dir)
+    lora_config = None
+    if training_args.use_lora:
+        target_lora_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+        lora_config = LoraConfig(
+            r=8,
+            lora_alpha=64,
+            target_modules=target_lora_modules,
+            lora_dropout=0.1,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
 
-        prev_model = get_peft_model(prev_model, lora_config, adapter_name="default")
-        model = get_peft_model(model, lora_config, adapter_name="default")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            reference_model = get_peft_model(reference_model, lora_config, adapter_name="default")
+            reference_model.save_pretrained(tmp_dir)
 
-        prev_model.load_adapter(tmp_dir, adapter_name="default", is_trainable=False)
-        model.load_adapter(tmp_dir, adapter_name="default", is_trainable=True)
-        model.print_trainable_parameters()
+            model = get_peft_model(model, lora_config, adapter_name="default")
+            model.load_adapter(tmp_dir, adapter_name="default", is_trainable=True)
+            model.print_trainable_parameters()
 
-    reference_model.set_adapter("default")
-    prev_model.set_adapter("default")
-    model.set_adapter("default")
-
-    tokenizer = AutoTokenizer.from_pretrained(training_args.model_id)
+        reference_model.set_adapter("default")
+        model.set_adapter("default")
 
     reference_model.eval()
 
@@ -494,10 +483,6 @@ def main(training_args: TrainingArgs):
                 print("All returns are 0, skipping update")
                 update_metrics = {}
             else:
-                # copy lora weights from model to prev_model, used to compute the old
-                # log probs in the loss calculation
-                prev_model = copy_model(model, prev_model)
-
                 # update the model
                 model, loss, kl, grad_norm = update_policy(
                     action_batch,
@@ -507,11 +492,8 @@ def main(training_args: TrainingArgs):
                     objective,
                     training_args,
                     model,
-                    prev_model,
                     reference_model,
                 )
-                # set previous model for the next update
-                prev_model = copy_model(model, prev_model)
 
                 update_metrics = {
                     "loss": loss,

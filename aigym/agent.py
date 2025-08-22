@@ -88,7 +88,7 @@ class Agent:
                         reasoning_trace=reasoning_trace,
                         parse_type=parse_type,
                     )
-                except ValidationError as exc:
+                except (ValidationError, TypeError) as exc:
                     rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
                     action = Action(completion=completion, parse_type="invalid")
 
@@ -176,7 +176,7 @@ class Agent:
         if action.get("action") != "visit_url" and "url" not in action:
             action["url"] = None
 
-        if action.get("action") == "visit_url" and action["url"] is None:
+        if action.get("action") == "visit_url" and ("url" not in action or action["url"] is None):
             raise InvalidActionError(f"url is required for visit_url action, found None. action: {action}")
 
         _url = urllib.parse.urlparse(observation.url)
