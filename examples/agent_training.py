@@ -92,6 +92,9 @@ class TrainingArgs:
     rollout_min_new_tokens: int = 64
     rollout_max_new_tokens: int = 128
     rollout_temperature: float = 1.25
+    rollout_top_p: float = 0.95
+    rollout_repetition_penalty: float = 1.1
+    rollout_no_repeat_ngram_size: int = 0
     wandb_project: str = None
     use_original_sequence_ids: bool = True
 
@@ -224,7 +227,7 @@ def reward_function(action: Action, observation: Observation) -> float:
 def policy(
     training_args: TrainingArgs,
     model: PreTrainedModel,
-    tokenizer: AutoTokenizer,
+    tokenizer: PreTrainedTokenizer,
     generation_config: GenerationConfig,
     prompt: str,
 ) -> RolloutBatch:
@@ -240,6 +243,8 @@ def policy(
             **model_inputs,
             generation_config=generation_config,
             tokenizer=tokenizer,
+            pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
         )
 
     completions = tokenizer.batch_decode(
@@ -430,6 +435,9 @@ def main(training_args: TrainingArgs):
         min_new_tokens=training_args.rollout_min_new_tokens,
         max_new_tokens=training_args.rollout_max_new_tokens,
         temperature=training_args.rollout_temperature,
+        top_p=training_args.rollout_top_p,
+        repetition_penalty=training_args.rollout_repetition_penalty,
+        no_repeat_ngram_size=training_args.rollout_no_repeat_ngram_size,
         padding=True,
         padding_size="left",
         return_attention_mask=True,
