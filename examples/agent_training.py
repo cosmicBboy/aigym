@@ -92,8 +92,8 @@ class TrainingArgs:
     rollout_min_new_tokens: int = 64
     rollout_max_new_tokens: int = 128
     rollout_temperature: float = 1.25
-    rollout_top_p: float = 0.95
-    rollout_repetition_penalty: float = 1.1
+    rollout_top_p: float = 1.0
+    rollout_repetition_penalty: float = 1.0
     rollout_no_repeat_ngram_size: int = 0
     wandb_project: str = None
     use_original_sequence_ids: bool = True
