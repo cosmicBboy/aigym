@@ -40,7 +40,7 @@ def main():
         url_boundaries=["https://en.wikipedia.org"],
     )
 
-    env = WikipediaGymEnv(n_hops=3, lines_per_chunk=None)
+    env = WikipediaGymEnv(n_hops=3)
     # observation, info = env.reset()
     observation, info = env.reset_manual(
         start_url="https://en.wikipedia.org/wiki/Chenggong_Reservoir",
