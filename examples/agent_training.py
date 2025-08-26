@@ -215,10 +215,10 @@ def reward_function(action: Action, observation: Observation) -> float:
     elif action.parse_type == "parseable":
         reward += 0.25
 
-    if action.url == observation.next_url:
-        reward += 1.0
-    elif action.url == observation.target_url:
+    if action.url == observation.target_url:
         reward += 2.0
+    elif action.url == observation.next_url:
+        reward += 1.0
 
     return reward
 
@@ -245,6 +245,7 @@ def policy(
             tokenizer=tokenizer,
             pad_token_id=tokenizer.eos_token_id,
             eos_token_id=tokenizer.eos_token_id,
+            disable_compile=True,
         )
 
     completions = tokenizer.batch_decode(
