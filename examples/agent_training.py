@@ -564,7 +564,3 @@ if __name__ == "__main__":
     parser = HfArgumentParser(TrainingArgs)
     training_args, *_ = parser.parse_args_into_dataclasses()
     main(training_args)
-
-# TODO:
-# - Need to reimplement chunked pages, because some pages are too long for the
-#   model to handle during training (OOM in the forward pass / logits calculation)
