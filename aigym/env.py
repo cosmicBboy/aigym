@@ -215,12 +215,29 @@ class Env(gym.Env):
         ...
 
 
+"""
+This pattern chunks markdown-format wikipedia pages where headers are formatted
+as follows:
+
+This is a header
+----------------
+
+This is a paragraph
+
+This is another header
+----------------
+
+This is another paragraph
+"""
+HEADER_CHUNK_PATTERN = r"(\n.+\n-+\n)"
+
+
 class WikipediaGymEnv(Env):
     """Wikipedia Gym environment."""
 
     def __init__(self, *args, **kwargs):
         if "chunk_pattern" not in kwargs:
-            kwargs["chunk_pattern"] = r"(\n.+\n-+\n)"
+            kwargs["chunk_pattern"] = HEADER_CHUNK_PATTERN
         super().__init__(
             WikipediaGraph(),
             *args,

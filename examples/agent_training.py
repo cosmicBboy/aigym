@@ -18,12 +18,12 @@ python examples/agent_training.py
 Examples using cli args:
 ```bash
 python examples/agent_training.py \
-    --model_id Qwen/Qwen2.5-0.5B-Instruct \
+    --model_id Qwen/Qwen2.5-3B-Instruct \
     --enable_gradient_checkpointing \
     --n_hops 1 \
     --n_tries_per_hop 10 \
-    --rollout_min_new_tokens 64 \
-    --rollout_max_new_tokens 128 \
+    --rollout_min_new_tokens 256 \
+    --rollout_max_new_tokens 512 \
     --group_size 4
 ```
 
@@ -324,6 +324,7 @@ def update_policy(
         training_args.use_original_sequence_ids,
     )
 
+    wandb.log({"sequence_length": sequence_ids.shape[1]})
     log_probs = compute_log_probs(model, sequence_ids, attention_mask)
     with torch.no_grad():
         log_probs_ref = compute_log_probs(reference_model, sequence_ids, attention_mask)
@@ -450,7 +451,7 @@ def main(training_args: TrainingArgs):
         url_boundaries=["https://en.wikipedia.org"],
     )
 
-    env = WikipediaGymEnv(n_hops=training_args.n_hops, lines_per_chunk=None)
+    env = WikipediaGymEnv(n_hops=training_args.n_hops)
     n_tries = int(training_args.n_hops * training_args.n_tries_per_hop)
 
     # Separate rollout step from model updates, i.e. implement an experience
