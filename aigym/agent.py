@@ -117,21 +117,27 @@ class Agent:
         print("\n")
         rprint(Panel.fit("End attempt", border_style="purple"))
         try:
-            action_dict, completion, reasoning_trace = self.parse_completion(completion, observation)
+            action_dict, completion, reasoning_trace, parse_type = self.parse_completion(completion, observation)
         except (json.JSONDecodeError, InvalidActionError) as exc:
             rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
             action_dict = None
 
         if action_dict is None:
-            return Action(completion=completion)
+            return Action(completion=completion, parse_type="invalid")
 
-        return Action(
-            completion,
-            **action_dict,
-            reasoning_trace=reasoning_trace,
-        )
+        try:
+            return Action(
+                completion=completion,
+                **action_dict,
+                reasoning_trace=reasoning_trace,
+                parse_type=parse_type,
+            )
+        except ValidationError as exc:
+            rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
+            return Action(completion=completion, parse_type="invalid")
 
     def get_prompt(self, observation: Observation) -> str:
+        # TODO: update prompt to add page chunk urls
         return prompts.WIKIPEDEA_ACTION_TEMPLATE.format(
             observation=observation.context,
             current_url=observation.url,

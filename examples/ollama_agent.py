@@ -16,7 +16,7 @@ def main():
 
     def policy(prompt: str) -> Generator[str, None, None]:
         for chunk in ollama.generate(
-            model="gemma3:27b",
+            model="gemma3:4b",
             prompt=prompt,
             stream=True,
             options={
@@ -31,14 +31,14 @@ def main():
         url_boundaries=["https://en.wikipedia.org"],
     )
 
-    env = WikipediaGymEnv(n_hops=2, lines_per_chunk=None)
+    env = WikipediaGymEnv(n_hops=2)
     observation, info = env.reset()
 
     for step in range(1, 21):
         pprint.print_observation(observation)
         pprint.print_context(observation)
         action = agent.act(observation)
-        if action is None:
+        if action.action is None:
             rprint(f"No action taken at step {step}")
             continue
         pprint.print_action(action)
