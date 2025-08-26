@@ -60,6 +60,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
+    CompileConfig,
     GenerationConfig,
     PreTrainedModel,
     PreTrainedTokenizer,
@@ -245,7 +246,6 @@ def policy(
             tokenizer=tokenizer,
             pad_token_id=tokenizer.eos_token_id,
             eos_token_id=tokenizer.eos_token_id,
-            disable_compile=True,
         )
 
     completions = tokenizer.batch_decode(
@@ -444,6 +444,7 @@ def main(training_args: TrainingArgs):
         return_attention_mask=True,
         pad_token_id=tokenizer.eos_token_id,
         stop_strings=["</answer>"],
+        compile_config=CompileConfig(fullgraph=False),
     )
 
     print(f"Initializing agent with generation config {generation_config}")
