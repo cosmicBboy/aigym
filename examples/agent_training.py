@@ -18,7 +18,7 @@ python examples/agent_training.py
 Examples using cli args:
 ```bash
 python examples/agent_training.py \
-    --model_id Qwen/Qwen2.5-3B-Instruct \
+    --model_id google/gemma-3-1b-it \
     --enable_gradient_checkpointing \
     --n_hops 1 \
     --n_tries_per_hop 10 \
@@ -32,7 +32,7 @@ With weights and biases:
 ```bash
 export WANDB_API_KEY=...
 python examples/agent_training.py \
-    --model_id Qwen/Qwen2.5-3B-Instruct \
+    --model_id google/gemma-3-1b-it \
     --enable_gradient_checkpointing \
     --n_hops 1 \
     --n_tries_per_hop 10 \
