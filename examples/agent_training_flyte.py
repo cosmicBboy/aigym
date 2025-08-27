@@ -2,20 +2,44 @@ import flyte
 
 from examples.agent_training import TrainingArgs, main
 
+image = (
+    flyte.Image.from_debian_base(name="aigym-agent-training")
+    # .with_uv_project(
+    #     pyproject_file=pathlib.Path("pyproject.toml"),
+    #     extra_args="--extra peft --extra flyte --extra wandb --extra trl",
+    #     pre=True,
+    # )
+    .with_pip_packages(
+        "beautifulsoup4",
+        "html2text",
+        "httpx",
+        "gymnasium",
+        "markdown",
+        "markdownify",
+        "numpy",
+        "pydantic",
+        "pygame",
+        "python-dotenv",
+        "rich",
+        "tiktoken",
+        "wandb",
+        "peft",
+        "transformers",
+        "torch>=2.7.0",
+        "bitsandbytes",
+        "flyte==2.0.0b17",
+    )
+)
+
+
 env = flyte.TaskEnvironment(
     name="aigym-agent-training",
     resources=flyte.Resources(
-        cpu="4",
-        memory="20Gi",
+        cpu="16",
+        memory="64Gi",
         gpu="L40s:4",
     ),
-    image=(
-        flyte.Image.from_debian_base(
-            name="aigym-agent-training",
-            python_version=(3, 12),
-            flyte_version="2.0.0b17",
-        ).with_uv_project("./pyproject.toml", extra_args="--extra flyte --extra wandb --extra peft")
-    ),
+    image=image,
     secrets=[
         flyte.Secret(key="huggingface_token", as_env_var="HF_TOKEN"),
         flyte.Secret(key="wandb_api_key", as_env_var="WANDB_API_KEY"),

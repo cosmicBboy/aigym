@@ -82,6 +82,14 @@ flyte create config \
 This will create a `config.yaml` file in the current directory.
 
 ```bash
-export PYTHONPATH=.
-python examples/agent_training_flyte.py
+PYTHONPATH=. python examples/agent_training_flyte.py \
+    --model_id google/gemma-3-270m-it \
+    --enable_gradient_checkpointing \
+    --n_episodes 100 \
+    --n_hops 1 \
+    --n_tries_per_hop 10 \
+    --rollout_min_new_tokens 64 \
+    --rollout_max_new_tokens 128 \
+    --group_size 4 \
+    --wandb_project aigym-agent-training
 ```

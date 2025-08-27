@@ -190,11 +190,7 @@ def compute_log_probs(
     output_ids = sequence_ids[:, 1:]
 
     torch.cuda.empty_cache()
-
-    def checkpointed_log_softmax(logits, dim=-1):
-        return torch.utils.checkpoint.checkpoint(lambda x: F.log_softmax(x, dim=dim), logits, use_reentrant=False)
-
-    log_probs = checkpointed_log_softmax(logits, dim=-1)
+    log_probs = F.log_softmax(logits, dim=-1)
     return log_probs.gather(dim=-1, index=output_ids.unsqueeze(-1)).squeeze(-1)
 
 
@@ -504,8 +500,8 @@ def main(training_args: TrainingArgs):
             rewards: torch.Tensor = torch.tensor(rewards, dtype=model.dtype).unsqueeze(1)
             returns = (rewards - rewards.mean()) / (rewards.std() + training_args.advantage_eps)
             returns = returns.to(model.device)
-            print(f"rewards: {rewards}")
-            print(f"returns: {returns}")
+            print(f"rewards: {rewards.tolist()}")
+            print(f"returns: {returns.tolist()}")
 
             if (returns == 0).all():
                 print("All returns are 0, skipping update")
@@ -534,7 +530,6 @@ def main(training_args: TrainingArgs):
             episode_cumulative_rewards += rewards_sum
             episode_cumulative_returns += returns.squeeze().sum()
 
-            print(f"step {step}, rewards: {rewards}, returns: {returns}")
             wandb.log(
                 {
                     "returns": returns.mean(),

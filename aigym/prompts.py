@@ -19,9 +19,14 @@ Here's critical information about the current state of the game:
 <target_url>{target_url}</target_url>
 
 Given the contents of the <observation>, <current_url>, <page_position>,
-and <target_url> tags, the <think> tag contains the url links to other
-wikipedia pages on the current wikipedia page that the Assistant thinks is most
-relevant to the target web page, for example:
+and <target_url> tags, the goal is to reach the <target_url> through your actions
+in the <answer> output. The <observation> tag contains content about the current
+page, as well as urls linking to other header sections on the same page, which
+you can use to navigate within the page.
+
+The <think> tag contains the url links to other wikipedia pages on the current
+wikipedia page that the Assistant thinks is most relevant to the target web page,
+for example:
 
 <think>
 A list of as many relevant urls as possible.

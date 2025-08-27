@@ -44,6 +44,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "rich" },
     { name = "tiktoken" },
+    { name = "tqdm" },
 ]
 
 [package.optional-dependencies]
@@ -64,6 +65,10 @@ openai = [
 ]
 peft = [
     { name = "peft" },
+]
+transformers = [
+    { name = "torch" },
+    { name = "transformers" },
 ]
 trl = [
     { name = "numpy" },
@@ -104,11 +109,14 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "rich" },
     { name = "tiktoken" },
+    { name = "torch", marker = "extra == 'transformers'", specifier = ">=2.7.0" },
     { name = "torch", marker = "extra == 'trl'", specifier = ">=2.7.0" },
+    { name = "tqdm" },
+    { name = "transformers", marker = "extra == 'transformers'" },
     { name = "trl", marker = "extra == 'trl'" },
     { name = "wandb", marker = "extra == 'wandb'" },
 ]
-provides-extras = ["flyte", "ollama", "openai", "google-genai", "trl", "peft", "bitsandbytes", "wandb"]
+provides-extras = ["flyte", "ollama", "openai", "google-genai", "trl", "peft", "bitsandbytes", "transformers", "wandb"]
 
 [package.metadata.requires-dev]
 dev = [

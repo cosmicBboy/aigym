@@ -66,6 +66,10 @@ peft = [
 bitsandbytes = [
     "bitsandbytes>=0.42.0",
 ]
+transformers = [
+    "transformers",
+    "torch>=2.7.0",
+]
 wandb = [
     "wandb",
 ]
