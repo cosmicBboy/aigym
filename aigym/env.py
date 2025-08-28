@@ -22,8 +22,7 @@ class Env(gym.Env):
         n_hops: int | None = None,
         tokenizer: Any | None = None,
         render_mode: str | None = None,
-        chunk_pattern: str | None = None,
-        # TODO: add n_chunks per page
+        **kwargs,
     ):
         """Initialize the environment.
 
@@ -43,7 +42,6 @@ class Env(gym.Env):
         self.graph: WebGraph = web_graph
         self.action_space: Tokens = Tokens(tokenizer=tokenizer)
         self.n_hops = n_hops
-        self.chunk_pattern = chunk_pattern
 
         self.start_url = None
         self.target_url = None
@@ -74,7 +72,6 @@ class Env(gym.Env):
     def _initialize_target_url(self, start_url: str, n_hops: int, n_retries: int = 10) -> tuple[str, list[str]]:
         _start_page = self.graph.get_page(
             start_url,
-            self.chunk_pattern,
         ).page_chunks[0]
 
         travel_path = [_start_page.url]
@@ -87,7 +84,6 @@ class Env(gym.Env):
                     next_page = self.graph.random_hop(
                         _page,
                         set(travel_path + [urllib.parse.urlparse(x).path for x in travel_path]),
-                        self.chunk_pattern,
                     )
                     travel_path.append(next_page.url)
                     _page = next_page
@@ -110,7 +106,7 @@ class Env(gym.Env):
         self.start_url = str(self.graph.session.get(self.graph.RANDOM_URL, follow_redirects=True).url)
 
     def _get_first_observation(self):
-        current_web_page = self.graph.get_page(self.start_url, self.chunk_pattern).page_chunks[0]
+        current_web_page = self.graph.get_page(self.start_url).page_chunks[0]
 
         # set new internal state
         self._state.current_web_page = current_web_page
@@ -171,7 +167,6 @@ class Env(gym.Env):
         if action.action == "visit_url":
             self._state.current_web_page = self.graph.get_page(
                 action.url,
-                self.chunk_pattern,
             )
             self._state.current_chunk_index = 0
         else:
@@ -235,11 +230,21 @@ HEADER_CHUNK_PATTERN = r"(\n.+\n-+\n)"
 class WikipediaGymEnv(Env):
     """Wikipedia Gym environment."""
 
-    def __init__(self, *args, **kwargs):
-        if "chunk_pattern" not in kwargs:
-            kwargs["chunk_pattern"] = HEADER_CHUNK_PATTERN
+    def __init__(
+        self,
+        *args,
+        wikipedia_graph: WikipediaGraph | None = None,
+        chunk_pattern: str | None = None,
+        chunk_char_limit: int | None = 5000,
+        **kwargs,
+    ):
+        if wikipedia_graph is None:
+            wikipedia_graph = WikipediaGraph(
+                chunk_pattern=chunk_pattern or HEADER_CHUNK_PATTERN,
+                chunk_char_limit=chunk_char_limit,
+            )
         super().__init__(
-            WikipediaGraph(),
+            wikipedia_graph,
             *args,
             **kwargs,
         )

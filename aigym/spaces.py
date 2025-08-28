@@ -37,7 +37,12 @@ def chunk_web_page(
 
 
 @lru_cache
-def chunk_by_pattern(url: str, content: str, pattern: str) -> list[PageContent]:
+def chunk_by_pattern(
+    url: str,
+    content: str,
+    pattern: str,
+    chunk_char_limit: int | None = None,
+) -> list[PageContent]:
     """Chunk a list of strings by a pattern."""
 
     url_path = urllib.parse.urlparse(url).path
@@ -55,6 +60,9 @@ def chunk_by_pattern(url: str, content: str, pattern: str) -> list[PageContent]:
             header = header.strip().split("\n")[0].strip().replace(" ", "_")
         else:
             header = None
+
+        if chunk_char_limit is not None:
+            chunk = chunk[:chunk_char_limit]
 
         chunks.append(
             PageContent(
@@ -76,6 +84,8 @@ class WebGraph(gym.Space[WebPage]):
         content_id: str | None = None,
         select_tags: list[str] | None = None,
         remove_attrs: list[dict[str, str]] | None = None,
+        chunk_pattern: str | None = None,
+        chunk_char_limit: int | None = None,
         random_seed: int | None = None,
     ):
         """Initialize the web page.
@@ -86,16 +96,16 @@ class WebGraph(gym.Space[WebPage]):
             content_id: The ID of the main content to select from the web page.
             select_tags: The tags to select from the web page.
             remove_attrs: The attributes to remove from the web page.
-            link_starts_with: The prefix of the link to select.
-            link_ends_with: The suffix of the link to select.
-            lines_per_chunk: The number of lines per chunk to return.
-            overlap: The overlap between chunks.
+            chunk_pattern: Regex pattern to use to chunk the web page.
+            chunk_char_limit: The maximum number of characters per chunk.
             random_seed: The random seed to use.
         """
         self.text_format = text_format
         self.content_id = content_id
         self.select_tags = select_tags
         self.remove_attrs = remove_attrs
+        self.chunk_pattern = chunk_pattern
+        self.chunk_char_limit = chunk_char_limit
         self.random_seed = random_seed
 
         # create httpx session
@@ -112,7 +122,6 @@ class WebGraph(gym.Space[WebPage]):
         self,
         page: WebPage,
         avoid_urls: set[str] | None = None,
-        chunk_pattern: str | None = None,
     ) -> WebPage:
         """
         Randomly hop to a section of the same page or a new page via a link.
@@ -137,10 +146,6 @@ class WebGraph(gym.Space[WebPage]):
             path_prob = 0.5 / n_paths
             chunk_prob = 0.5 / n_chunks
             probs = [path_prob] * n_paths + [chunk_prob] * n_chunks
-        elif n_paths > 0:
-            probs = [1.0 / n_paths] * n_paths
-        elif n_chunks > 0:
-            probs = [1.0 / n_chunks] * n_chunks
         else:
             probs = None
 
@@ -152,7 +157,7 @@ class WebGraph(gym.Space[WebPage]):
             return _choice
 
         _url = urllib.parse.urljoin(page.url, _choice)
-        return self.get_page(_url, chunk_pattern)
+        return self.get_page(_url)
 
     @functools.lru_cache
     def get_soup(self, url: str):
@@ -175,7 +180,6 @@ class WebGraph(gym.Space[WebPage]):
     def get_page(
         self,
         url: str,
-        chunk_pattern: str | None,
     ) -> WebPage:
         response = self.session.get(url, follow_redirects=True)
 
@@ -185,10 +189,10 @@ class WebGraph(gym.Space[WebPage]):
         else:
             raise ValueError(f"Text format '{self.text_format}' is not supported")
 
-        if chunk_pattern is None:
+        if self.chunk_pattern is None:
             content_chunks = [PageContent(header=None, content=content)]
         else:
-            content_chunks = chunk_by_pattern(url, content, chunk_pattern)
+            content_chunks = chunk_by_pattern(url, content, self.chunk_pattern, self.chunk_char_limit)
             # TODO: move this into wikipedia-specific class
             content_chunks = [
                 x for x in content_chunks if x.header not in ["References", "Footnotes", "See_also", "External_links"]
