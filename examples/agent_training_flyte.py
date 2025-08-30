@@ -27,7 +27,7 @@ image = (
         "transformers",
         "torch>=2.7.0",
         "bitsandbytes",
-        "flyte==2.0.0b17",
+        "flyte==2.0.0b18",
     )
 )
 
