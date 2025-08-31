@@ -48,13 +48,15 @@ class PageContent(BaseModel):
 
 def _format_context(url: str, content: str, chunk_urls: list[str]) -> str:
     urls = "\n".join([f"- {url}" for url in chunk_urls])
+    if urls:
+        toc = f"Table of contents:\n{urls}\n"
+    else:
+        toc = ""
     return f"""
-Table of contents:
-{urls}
-
+{toc}
 Current contents: {url}
 {content}
-    """
+    """.strip()
 
 
 class WebPage(BaseModel):

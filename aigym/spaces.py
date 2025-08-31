@@ -142,12 +142,11 @@ class WebGraph(gym.Space[WebPage]):
         # Create probabilities that balance sampling between paths and chunks
         n_paths = len(paths_in_source_url)
         n_chunks = len(page_chunks)
+        probs = None
         if n_paths > 0 and n_chunks > 0:
             path_prob = 0.5 / n_paths
             chunk_prob = 0.5 / n_chunks
             probs = [path_prob] * n_paths + [chunk_prob] * n_chunks
-        else:
-            probs = None
 
         if len(sample_from) == 0:
             raise NoPathsFoundError(page.url)

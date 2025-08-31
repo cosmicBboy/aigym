@@ -18,12 +18,12 @@ python examples/agent_training.py
 Examples using cli args:
 ```bash
 python examples/agent_training.py \
-    --model_id google/gemma-3-1b-it \
+    --model_id google/gemma-3-270m-it \
     --enable_gradient_checkpointing \
     --n_hops 1 \
     --n_tries_per_hop 10 \
-    --rollout_min_new_tokens 256 \
-    --rollout_max_new_tokens 512 \
+    --rollout_min_new_tokens 64 \
+    --rollout_max_new_tokens 128 \
     --group_size 4
 ```
 
@@ -213,15 +213,15 @@ def reward_function(action: Action, observation: Observation) -> float:
     if action.action is None:
         return reward
 
-    if action.parse_type == "exact_match":
-        reward += 0.5
-    elif action.parse_type == "parseable":
-        reward += 0.25
+    # if action.parse_type == "exact_match":
+    #     reward += 0.1
+    # elif action.parse_type == "parseable":
+    #     reward += 0.05
 
     if action.url == observation.target_url:
-        reward += 2.0
-    elif action.url == observation.next_url:
         reward += 1.0
+    elif action.url == observation.next_url:
+        reward += 0.5
 
     return reward
 
