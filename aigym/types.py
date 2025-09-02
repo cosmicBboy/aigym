@@ -19,15 +19,23 @@ class RolloutBatch(BaseModel, arbitrary_types_allowed=True):
     log_probs: torch.Tensor | None = None
 
 
+class ErrorType(BaseModel):
+    """The type of error that occurred."""
+
+    type: str
+    message: str
+
+
 class Action(BaseModel):
     """An action taken by the agent."""
 
     completion: str
     reason_summary: str | None = None
-    action: Literal["visit_url", "backward", "forward"] | None = None
+    action: Literal["visit_url"] | None = None
     url: str | None = None
     reasoning_trace: str | None = None
     parse_type: ParseType | None = None
+    error_type: ErrorType | None = None
 
     @field_validator("url")
     def validate_url(cls, v: str | None) -> str | None:

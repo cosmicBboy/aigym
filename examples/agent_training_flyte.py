@@ -1,5 +1,9 @@
 import flyte
+import flyte.report
+import torch
 
+import aigym.types as types
+from aigym.env import WikipediaGymEnv
 from examples.agent_training import TrainingArgs, main
 
 image = (
@@ -47,9 +51,52 @@ env = flyte.TaskEnvironment(
 )
 
 
-@env.task
+class ReportLogger:
+    def log_environment(self, env: WikipediaGymEnv):
+        html = "<h1>Environment</h1>"
+        html += f"<p>{env.travel_map}</p>"
+        html += f"<p>{env.travel_path}</p>"
+        env_tab = flyte.report.get_tab("Environment")
+        env_tab.replace(html)
+
+    def log_actions(self, actions: list[types.Action]):
+        html = ""
+        for i, action in enumerate(actions):
+            html += f"<h2>Action {i}</h2>"
+            html += f"<p>{action}</p>"
+        actions_tab = flyte.report.get_tab("Actions")
+        actions_tab.replace(html)
+
+    def log_observation(self, observation: types.Observation):
+        html = "<h2>Observation</h2>"
+        html += f"<p>{observation}</p>"
+        html += "<h2>Context</h2>"
+        html += f"<p>{observation.context}</p>"
+        observation_tab = flyte.report.get_tab("Observation")
+        observation_tab.replace(html)
+
+    def log_metrics(self, metrics: dict[str, float]):
+        html = "<h2>Metrics</h2>"
+        html += f"<p>{metrics}</p>"
+        metrics_tab = flyte.report.get_tab("Metrics")
+        metrics_tab.replace(html)
+
+    def log_rewards(self, rewards: torch.Tensor, returns: torch.Tensor):
+        html = "<h2>Rewards</h2>"
+        html += f"<p>{rewards.squeeze().tolist()}</p>"
+        html += "<h2>Returns</h2>"
+        html += f"<p>{returns.squeeze().tolist()}</p>"
+        rewards_tab = flyte.report.get_tab("Rewards")
+        rewards_tab.replace(html)
+
+    def flush(self):
+        flyte.report.flush()
+
+
+@env.task(report=True)
 def agent_training(args: TrainingArgs):
     main(args)
+    # main(args, ReportLogger())
 
 
 if __name__ == "__main__":

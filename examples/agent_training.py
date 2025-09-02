@@ -46,7 +46,7 @@ python examples/agent_training.py \
 import tempfile
 from dataclasses import dataclass
 from functools import partial
-from typing import cast
+from typing import Protocol, cast
 
 import tiktoken
 import torch
@@ -68,6 +68,7 @@ from transformers import (
 )
 
 import aigym.pprint as pprint
+import aigym.prompts as prompts
 import wandb
 from aigym.agent import Agent
 from aigym.env import WikipediaGymEnv
@@ -85,7 +86,7 @@ class TrainingArgs:
     advantage_eps: float = 1e-8
     clip_eps: float = 0.2
     kl_weight: float = 0.01
-    max_grad_norm: float = 5.0
+    max_grad_norm: float = 1.0
     use_lora: bool = True
     use_bnb_quantization: bool = False
     enable_gradient_checkpointing: bool = False
@@ -98,6 +99,15 @@ class TrainingArgs:
     rollout_repetition_penalty: float = 1.0
     rollout_no_repeat_ngram_size: int = 0
     wandb_project: str = None
+
+
+class TrainingLogger(Protocol):
+    def log_environment(self, env: WikipediaGymEnv) -> None: ...
+    def log_actions(self, actions: list[Action]) -> None: ...
+    def log_observation(self, observation: Observation) -> None: ...
+    def log_metrics(self, metrics: dict[str, float]) -> None: ...
+    def log_rewards(self, rewards: torch.Tensor, returns: torch.Tensor) -> None: ...
+    def flush(self) -> None: ...
 
 
 def masked_mean(
@@ -204,19 +214,12 @@ def reward_function(action: Action, observation: Observation) -> float:
     """Reward function.
 
     - no/invalid action = 0
-    - completion is parseable: +0.25
-    - completion is exact match: +0.5
-    - is next url +1.0
-    - is target url +2.0
+    - is next url 0.5
+    - is target url 1.0
     """
     reward = 0
     if action.action is None:
         return reward
-
-    # if action.parse_type == "exact_match":
-    #     reward += 0.1
-    # elif action.parse_type == "parseable":
-    #     reward += 0.05
 
     if action.url == observation.target_url:
         reward += 1.0
@@ -235,7 +238,26 @@ def policy(
     prompt: str,
 ) -> RolloutBatch:
     # tokenize and prepare inputs for batch generation
-    model_inputs = tokenizer([prompt], return_tensors="pt").to(model.device)
+
+    chat_messages = [
+        {
+            "role": "system",
+            "content": prompts.REASONING_TEMPLATE,
+        },
+        {
+            "role": "user",
+            "content": prompt,
+        },
+    ]
+    chat_prompt = tokenizer.apply_chat_template(chat_messages, tokenize=False, add_generation_prompt=True)
+    model_inputs = tokenizer(
+        [chat_prompt],
+        return_tensors="pt",
+        padding=True,
+        padding_side="left",
+        return_attention_mask=True,
+    ).to(model.device)
+
     model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(training_args.group_size, 1)
     model_inputs["input_ids"] = model_inputs["input_ids"].repeat(training_args.group_size, 1)
 
@@ -266,14 +288,11 @@ def policy(
 def reconstruct_sequence_ids(
     action_batch: ActionBatch,
     tokenizer: PreTrainedTokenizer,
-    model: PreTrainedModel,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Reconstructs clean sequence ids from the action batch.
+    """Reconstructs sequence ids from the action batch.
 
-    The sequence ids are constructed by concatenating the input ids and the
-    completion token ids. The action mask is used to mask out the input ids
-    from the loss calculation. The attention mask is used to mask out the
-    padding tokens from the loss calculation.
+    The action mask is used to mask out the input id from the loss calculation.
+    The attention mask is used to mask out the padding tokens from the loss calculation.
     """
 
     log_probs_old = None
@@ -312,7 +331,6 @@ def update_policy(
     sequence_ids, action_mask, attention_mask, log_probs_old = reconstruct_sequence_ids(
         action_batch,
         tokenizer,
-        model,
     )
 
     # Idea: trucate or zero out the logits such that only the action tokens are
@@ -354,13 +372,46 @@ def update_policy(
     return model, loss, kl, grad_norm
 
 
-def main(training_args: TrainingArgs):
+class PrintLogger:
+    def log_environment(self, env: WikipediaGymEnv) -> None:
+        print(f"Environment: {env.travel_map}")
+        print(f"Environment: {env.travel_path}")
+
+    def log_actions(self, actions: list[Action]) -> None:
+        for i, action in enumerate(actions):
+            pprint.print_action(action, index=i)
+
+    def log_observation(self, observation: Observation) -> None:
+        pprint.print_observation(observation)
+        pprint.print_context(observation)
+
+    def log_metrics(self, metrics: dict[str, float]) -> None:
+        print(f"Metrics: {metrics}")
+
+    def log_rewards(self, rewards: torch.Tensor, returns: torch.Tensor) -> None:
+        print(f"Rewards: {rewards.squeeze().tolist()}, Returns: {returns.squeeze().tolist()}")
+
+    def flush(self) -> None: ...
+
+
+def main(training_args: TrainingArgs, logger: TrainingLogger | None = None):
+    if logger is None:
+        logger = PrintLogger()
+
     if training_args.wandb_project is None:
         wandb.init(mode="disabled")
     else:
         wandb.init(project=training_args.wandb_project)
 
     enc = tiktoken.get_encoding("cl100k_base")
+
+    if torch.cuda.is_available():
+        print(f"Using CUDA: {torch.cuda.get_device_name(torch.cuda.current_device())}")
+        print("\nAvailable GPUs:")
+        for i in range(torch.cuda.device_count()):
+            print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
+            print(f"    Memory: {torch.cuda.get_device_properties(i).total_memory / 1024**3:.1f} GB")
+        print()
 
     print("Loading model")
     tokenizer = AutoTokenizer.from_pretrained(training_args.model_id)
@@ -390,9 +441,9 @@ def main(training_args: TrainingArgs):
 
     lora_config = None
     if training_args.use_lora:
-        target_lora_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+        target_lora_modules = ["q_proj", "k_proj", "v_proj"]
         lora_config = LoraConfig(
-            r=8,
+            r=16,
             lora_alpha=64,
             target_modules=target_lora_modules,
             lora_dropout=0.1,
@@ -475,16 +526,16 @@ def main(training_args: TrainingArgs):
         observation, info = env.reset()
 
         print(f"Starting to train with {n_tries} steps")
-        print("Travel map:", env.travel_map)
-        print("Travel path:", env.travel_path)
+        logger.log_environment(env)
 
+        n_steps = 0
         episode_cumulative_returns = 0
         episode_cumulative_rewards = 0
 
         for step in range(1, n_tries):
+            n_steps += 1
             print(f"step {step}")
-            pprint.print_observation(observation)
-            pprint.print_context(observation)
+            logger.log_observation(observation)
             action_batch: ActionBatch = agent.act(observation)
 
             step_action: Action | None = None
@@ -492,21 +543,22 @@ def main(training_args: TrainingArgs):
             for i, action in enumerate(action_batch.actions):
                 reward = reward_function(action, observation)
                 rewards.append(reward)
-                pprint.print_action(action, index=i)
                 if action.action is None:
                     continue
                 if action.url == observation.next_url:
                     step_action = action
 
+            logger.log_actions(action_batch.actions)
+
             rewards: torch.Tensor = torch.tensor(rewards, dtype=model.dtype).unsqueeze(1)
             returns = (rewards - rewards.mean()) / (rewards.std() + training_args.advantage_eps)
             returns = returns.to(model.device)
-            print(f"rewards: {rewards.tolist()}")
-            print(f"returns: {returns.tolist()}")
+            logger.log_rewards(rewards, returns)
 
             if (returns == 0).all():
                 print("All returns are 0, skipping update")
                 update_metrics = {}
+                continue
             else:
                 # update the model
                 model, loss, kl, grad_norm = update_policy(
@@ -519,7 +571,6 @@ def main(training_args: TrainingArgs):
                     model,
                     reference_model,
                 )
-
                 update_metrics = {
                     "loss": loss,
                     "kl": kl,
@@ -531,16 +582,17 @@ def main(training_args: TrainingArgs):
             episode_cumulative_rewards += rewards_sum
             episode_cumulative_returns += returns.squeeze().sum()
 
-            wandb.log(
-                {
-                    "returns": returns.mean(),
-                    "rewards": rewards.mean(),
-                    "episode_cumulative_returns": episode_cumulative_returns,
-                    "episode_cumulative_rewards": episode_cumulative_rewards,
-                    "total_cumulative_rewards": total_cumulative_rewards,
-                    **update_metrics,
-                }
-            )
+            metrics = {
+                "returns": returns.mean(),
+                "rewards": rewards.mean(),
+                "n_steps": n_steps,
+                "episode_cumulative_returns": episode_cumulative_returns,
+                "episode_cumulative_rewards": episode_cumulative_rewards,
+                "log_total_cumulative_rewards": torch.log(total_cumulative_rewards),
+                **update_metrics,
+            }
+            logger.log_metrics(metrics)
+            wandb.log(metrics)
 
             if step_action is not None:
                 # If the action batch contains at least one item with the correct
@@ -549,6 +601,8 @@ def main(training_args: TrainingArgs):
                 if terminated or truncated:
                     rprint(f"Episode terminated or truncated at step {step}")
                     break
+
+        logger.flush()
 
     rprint("Task finished!")
     env.close()

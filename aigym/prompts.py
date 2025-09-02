@@ -5,7 +5,7 @@ asks a question, and the Assistant solves it. The assistant first thinks about
 the reasoning process in the mind and then provides the user with the answer.
 The reasoning process and answer are enclosed within <think> </think> and
 <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think>
-<answer> answer here </answer>.\nUser: {prompt}.\nAssistant:
+<answer> answer here </answer>
 """
 
 WIKIPEDEA_ACTION_TEMPLATE = """In the "Wikipedia Maze", the Agent finds
@@ -13,16 +13,15 @@ a target url starting from a random url.
 
 Here's critical information about the current state of the game:
 <current_url>{current_url}</current_url>
-<page_position>{current_chunk}/{total_chunks} chunks</page_position>
+<target_url>{target_url}</target_url>
 <url_boundaries>{url_boundaries}</url_boundaries>
 <observation>{observation}</observation>
-<target_url>{target_url}</target_url>
 
-Given the contents of the <observation>, <current_url>, <page_position>,
-and <target_url> tags, the goal is to reach the <target_url> through your actions
-in the <answer> output. The <observation> tag contains content about the current
-page, as well as urls linking to other header sections on the same page in the
-"Table of contents" section, which you can use to navigate within the page.
+Given the contents of the <observation>, <current_url>, and <target_url> tags,
+the goal is to reach the <target_url> through your actions in the <answer> output.
+The <observation> tag contains content about the current page, as well as urls
+linking to other header sections on the same page in the "Table of contents"
+section, which you can use to navigate within the page.
 
 The <think> tag contains the url links to other wikipedia pages on the current
 wikipedia page that the Assistant thinks is most relevant to the target url,
@@ -66,6 +65,6 @@ MUST contain <think> </think> and <answer> </answer> tags.
 DO NOT pick the <current_url> as the url to visit.
 ONLY OUTPUT one json object in the <answer> tag with no markdown code blocks.
 If the <target_url> is in the <observation> tag, pick the url to complete the maze.
-
-Output:
+If the <target_url> is not in the <observation> tag, pick the url to visit next that will get you closer to the target url.
+YOU ARE NOT ALLOWED to pick the url in the <target_url> tag: you can only pick urls that are in the <observation> tag.
 """
