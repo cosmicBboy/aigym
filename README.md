@@ -34,7 +34,7 @@ pip install uv
 Create a virtual environment:
 
 ```bash
-uv venv
+uv venv --python 3.12
 ```
 
 Activate the virtual environment:
@@ -58,4 +58,38 @@ Run an ollama-based agent on the Wikipedia maze environment:
 
 ```bash
 python examples/ollama_agent.py
+```
+
+### Agent training on Flyte
+
+Install flyte:
+
+```bash
+uv pip install '.[flyte]'
+```
+
+The `examples/agent_training.py` example can by run on a Flyte cluster using
+the `examples/agent_training_flyte.py` entrypoint. First, create a configuration:
+
+```bash
+flyte create config \
+--endpoint demo.hosted.unionai.cloud \
+--builder remote \
+--project aigym \
+--domain development
+```
+
+This will create a `config.yaml` file in the current directory.
+
+```bash
+PYTHONPATH=. python examples/agent_training_flyte.py \
+    --model_id google/gemma-3-1b-it \
+    --enable_gradient_checkpointing \
+    --n_episodes 250 \
+    --n_hops 3 \
+    --n_tries_per_hop 10 \
+    --rollout_min_new_tokens 64 \
+    --rollout_max_new_tokens 256 \
+    --group_size 8 \
+    --wandb_project aigym-agent-training
 ```

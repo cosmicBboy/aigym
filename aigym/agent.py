@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import urllib.parse
 from typing import Callable, Generator
 
@@ -13,7 +14,7 @@ from rich import print as rprint
 from rich.panel import Panel
 
 import aigym.prompts as prompts
-from aigym.types import Action, ActionBatch, Observation, ParseType, RolloutBatch
+import aigym.types as types
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class InvalidActionError(Exception):
 class Agent:
     def __init__(
         self,
-        policy: Callable[[str], Generator[str, None, None] | RolloutBatch],
+        policy: Callable[[str], Generator[str, None, None] | types.RolloutBatch],
         token_encoder: tiktoken.Encoding,
         url_boundaries: list[str] | None = None,
         stream: bool = True,
@@ -36,27 +37,7 @@ class Agent:
         self.session = httpx.Client()
         self.stream = stream
 
-    def perceive(self, observation: Observation) -> str:
-        prompt = prompts.PERCEPTION_PROMPT_TEMPLATE.format(
-            system_prompt=prompts.PERCEPTION_SYSTEM_PROMPT,
-            observation=observation.context,
-            target_url=observation.target_url,
-        )
-        stream = self.policy(prompt=prompt)
-        output = ""
-
-        rprint(Panel.fit("Perception stream", border_style="violet"))
-        for chunk in stream:
-            rprint(rich.markup.escape(chunk), end="")
-            output += chunk
-
-        print("\n")
-        rprint(Panel.fit(rich.markup.escape(output), title="Perception", border_style="purple"))
-
-        output = output.split("</think>")[-1].strip()
-        return output
-
-    def act(self, observation: Observation) -> Action | ActionBatch | None:
+    def act(self, observation: types.Observation) -> types.Action | types.ActionBatch | None:
         if self.stream:
             action = self.action_from_stream(observation)
         else:
@@ -66,42 +47,54 @@ class Agent:
 
     def action_from_batch(
         self,
-        observation: Observation,
-    ) -> ActionBatch:
+        observation: types.Observation,
+    ) -> types.ActionBatch:
         prompt = self.get_prompt(observation)
         batch = self.policy(prompt)
         actions = []
         for completion in batch.completions:
+            error_type = None
             try:
                 action_dict, completion, reasoning_trace, parse_type = self.parse_completion(completion, observation)
             except (json.JSONDecodeError, InvalidActionError) as exc:
-                rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
                 action_dict = None
+                error_type = types.ErrorType(type=exc.__class__.__name__, message=str(exc))
 
             if action_dict is None:
-                action = Action(completion=completion, parse_type="invalid")
+                action = types.Action(
+                    completion=completion,
+                    parse_type="invalid",
+                    error_type=types.ErrorType(
+                        type="no_action_dict",
+                        message="No action found",
+                    ),
+                )
             else:
                 try:
-                    action = Action(
+                    action = types.Action(
                         **action_dict,
                         completion=completion,
                         reasoning_trace=reasoning_trace,
                         parse_type=parse_type,
+                        error_type=error_type,
                     )
                 except (ValidationError, TypeError) as exc:
-                    rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
-                    action = Action(completion=completion, parse_type="invalid")
+                    action = types.Action(
+                        completion=completion,
+                        parse_type="invalid",
+                        error_type=types.ErrorType(type=exc.__class__.__name__, message=str(exc)),
+                    )
 
             actions.append(action)
-        return ActionBatch(
+        return types.ActionBatch(
             **batch.model_dump(),
             actions=actions,
         )
 
     def action_from_stream(
         self,
-        observation: Observation,
-    ) -> Action:
+        observation: types.Observation,
+    ) -> types.Action:
         prompt = self.get_prompt(observation)
         prompt_token_length = len(self.token_encoder.encode(prompt))
         rprint(Panel.fit(f"Prompt token length: {prompt_token_length}", border_style="violet"))
@@ -118,55 +111,54 @@ class Agent:
         rprint(Panel.fit("End attempt", border_style="purple"))
         try:
             action_dict, completion, reasoning_trace, parse_type = self.parse_completion(completion, observation)
-        except (json.JSONDecodeError, InvalidActionError) as exc:
-            rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
+        except (json.JSONDecodeError, InvalidActionError):
             action_dict = None
 
         if action_dict is None:
-            return Action(completion=completion, parse_type="invalid")
+            return types.Action(
+                completion=completion,
+                parse_type="invalid",
+                error_type=types.ErrorType(type="no_action", message="no action found"),
+            )
 
         try:
-            return Action(
+            return types.Action(
                 completion=completion,
                 **action_dict,
                 reasoning_trace=reasoning_trace,
                 parse_type=parse_type,
+                error_type=None,
             )
         except ValidationError as exc:
-            rprint(Panel.fit(f"[red]{type(exc)} Error: {exc}[/red]", border_style="red"))
-            return Action(completion=completion, parse_type="invalid")
+            return types.Action(
+                completion=completion,
+                parse_type="invalid",
+                error_type=types.ErrorType(type=exc.__class__.__name__, message=str(exc)),
+            )
 
-    def get_prompt(self, observation: Observation) -> str:
-        # TODO: update prompt to add page chunk urls
+    def get_prompt(self, observation: types.Observation) -> str:
         return prompts.WIKIPEDEA_ACTION_TEMPLATE.format(
             observation=observation.context,
             current_url=observation.url,
-            current_chunk=observation.current_chunk,
-            total_chunks=observation.total_chunks,
             target_url=observation.target_url,
             url_boundaries=", ".join(self.url_boundaries) if self.url_boundaries else "NONE",
         )
 
-    def parse_completion(self, completion: str, observation: Observation) -> tuple[dict, str, str, ParseType]:
-        import re
-
-        # TODO: do exact match parsing.
+    def parse_completion(
+        self, completion: str, observation: types.Observation
+    ) -> tuple[dict, str, str, types.ParseType]:
         exact_match = re.search(r"<think>(.*?)</think>\n+<answer>(.*?)</answer>", completion, re.DOTALL)
         if exact_match:
             reasoning_trace = exact_match.group(1).strip()
             answer = exact_match.group(2).strip()
-            try:
-                action = json.loads(answer)
-            except json.JSONDecodeError as exc:
-                logger.info("Could not generate a valid action")
-                raise InvalidActionError(str(exc)) from exc
-            return action, completion, reasoning_trace, "exact_match"
+            parse_type = "exact_match"
+        else:
+            think_match = re.search(r"<think>(.*?)</think>", completion, re.DOTALL)
+            reasoning_trace = think_match.group(1).strip() if think_match else ""
 
-        think_match = re.search(r"<think>(.*?)</think>", completion, re.DOTALL)
-        reasoning_trace = think_match.group(1).strip() if think_match else ""
-
-        answer_match = re.search(r"<answer>(.*?)</answer>", completion, re.DOTALL)
-        answer = answer_match.group(1).strip() if answer_match else ""
+            answer_match = re.search(r"<answer>(.*?)</answer>", completion, re.DOTALL)
+            answer = answer_match.group(1).strip() if answer_match else ""
+            parse_type = "parseable"
 
         try:
             action = json.loads(answer)
@@ -211,7 +203,7 @@ class Agent:
         action_json = json.dumps(action, indent=2)
         # create clean completion
         completion = f"<think>\n{reasoning_trace}\n</think>\n<answer>\n{action_json}\n</answer>"
-        return action, completion, reasoning_trace, "parseable"
+        return action, completion, reasoning_trace, parse_type
 
     def _url_not_in_context(self, url: str, context: str) -> bool:
         _url = urllib.parse.urlparse(url)

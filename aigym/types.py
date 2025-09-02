@@ -14,8 +14,16 @@ class RolloutBatch(BaseModel, arbitrary_types_allowed=True):
 
     sequence_ids: torch.Tensor
     input_ids: torch.Tensor
+    attention_mask: torch.Tensor
     completions: list[str]
     log_probs: torch.Tensor | None = None
+
+
+class ErrorType(BaseModel):
+    """The type of error that occurred."""
+
+    type: str
+    message: str
 
 
 class Action(BaseModel):
@@ -23,10 +31,11 @@ class Action(BaseModel):
 
     completion: str
     reason_summary: str | None = None
-    action: Literal["visit_url", "backward", "forward"] | None = None
+    action: Literal["visit_url"] | None = None
     url: str | None = None
     reasoning_trace: str | None = None
     parse_type: ParseType | None = None
+    error_type: ErrorType | None = None
 
     @field_validator("url")
     def validate_url(cls, v: str | None) -> str | None:
@@ -47,13 +56,15 @@ class PageContent(BaseModel):
 
 def _format_context(url: str, content: str, chunk_urls: list[str]) -> str:
     urls = "\n".join([f"- {url}" for url in chunk_urls])
+    if urls:
+        toc = f"Table of contents:\n{urls}\n"
+    else:
+        toc = ""
     return f"""
-Table of contents:
-{urls}
-
+{toc}
 Current contents: {url}
 {content}
-    """
+    """.strip()
 
 
 class WebPage(BaseModel):

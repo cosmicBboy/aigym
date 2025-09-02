@@ -12,12 +12,13 @@ authors = [{ name = "Niels Bantilan", email = "niels.bantilan@gmail.com" }]
 description = "Reinforcement learning environments for fine-tuning language models for reasoning tasks."
 license-files = ["LICENSE"]
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "beautifulsoup4",
     "html2text",
     "httpx",
     "gymnasium",
+    "markdown",
     "markdownify",
     "numpy",
     "pydantic",
@@ -42,6 +43,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+flyte = [
+    "flyte==2.0.0b17",
+]
 ollama = [
     "ollama",
 ]
@@ -61,6 +65,10 @@ peft = [
 ]
 bitsandbytes = [
     "bitsandbytes>=0.42.0",
+]
+transformers = [
+    "transformers",
+    "torch>=2.7.0",
 ]
 wandb = [
     "wandb",

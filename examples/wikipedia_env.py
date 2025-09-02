@@ -5,7 +5,7 @@ from aigym.env import WikipediaGymEnv
 
 def main():
     # This runs 100 resets on the wikipedia environment
-    env = WikipediaGymEnv(n_hops=10)
+    env = WikipediaGymEnv(n_hops=10, chunk_char_limit=5000)
 
     for i in range(100):
         print(f"⭐️ Reset {i}")

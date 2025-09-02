@@ -22,8 +22,7 @@ class Env(gym.Env):
         n_hops: int | None = None,
         tokenizer: Any | None = None,
         render_mode: str | None = None,
-        chunk_pattern: str | None = None,
-        # TODO: add n_chunks per page
+        **kwargs,
     ):
         """Initialize the environment.
 
@@ -43,7 +42,6 @@ class Env(gym.Env):
         self.graph: WebGraph = web_graph
         self.action_space: Tokens = Tokens(tokenizer=tokenizer)
         self.n_hops = n_hops
-        self.chunk_pattern = chunk_pattern
 
         self.start_url = None
         self.target_url = None
@@ -71,10 +69,9 @@ class Env(gym.Env):
         map[self.travel_path[-1]] = None
         return map
 
-    def _initialize_target_url(self, start_url: str, n_hops: int, n_retries: int = 10) -> tuple[str, list[str]]:
+    def _initialize_target_url(self, start_url: str, n_hops: int, n_retries: int = 30) -> tuple[str, list[str]]:
         _start_page = self.graph.get_page(
             start_url,
-            self.chunk_pattern,
         ).page_chunks[0]
 
         travel_path = [_start_page.url]
@@ -87,7 +84,6 @@ class Env(gym.Env):
                     next_page = self.graph.random_hop(
                         _page,
                         set(travel_path + [urllib.parse.urlparse(x).path for x in travel_path]),
-                        self.chunk_pattern,
                     )
                     travel_path.append(next_page.url)
                     _page = next_page
@@ -106,11 +102,11 @@ class Env(gym.Env):
         assert len(travel_path) == len(set(travel_path)), f"Travel path contains duplicates: {travel_path}"
         return _page.url, travel_path
 
-    def random_start(self):
-        self.start_url = str(self.graph.session.get(self.graph.RANDOM_URL, follow_redirects=True).url)
+    def random_start(self) -> str:
+        return str(self.graph.session.get(self.graph.RANDOM_URL, follow_redirects=True).url)
 
     def _get_first_observation(self):
-        current_web_page = self.graph.get_page(self.start_url, self.chunk_pattern).page_chunks[0]
+        current_web_page = self.graph.get_page(self.start_url).page_chunks[0]
 
         # set new internal state
         self._state.current_web_page = current_web_page
@@ -144,14 +140,25 @@ class Env(gym.Env):
         start_url: str | None = None,
         seed: int | None = None,
         options: dict | None = None,
+        n_retries: int = 30,
     ) -> tuple[Observation, dict]:
         """Reset the environment."""
         if start_url is not None:
             self.start_url = start_url
         else:
-            self.random_start()
+            self.start_url = self.random_start()
 
-        self.target_url, self.travel_path = self._initialize_target_url(self.start_url, self.n_hops)
+        for retry in range(n_retries):
+            try:
+                self.target_url, self.travel_path = self._initialize_target_url(self.start_url, self.n_hops)
+                break
+            except NoPathsFoundError as exc:
+                if retry < n_retries - 1:
+                    self.start_url = self.random_start()
+                    print(f"Retry {retry} failed with error: {exc}, random start with new start url: {self.start_url}")
+                    continue
+                raise
+
         self.start_url = self.travel_path[0]
         self.travel_checkpoints = [self.start_url]
         observation, info = self._get_first_observation()
@@ -171,7 +178,6 @@ class Env(gym.Env):
         if action.action == "visit_url":
             self._state.current_web_page = self.graph.get_page(
                 action.url,
-                self.chunk_pattern,
             )
             self._state.current_chunk_index = 0
         else:
@@ -235,11 +241,21 @@ HEADER_CHUNK_PATTERN = r"(\n.+\n-+\n)"
 class WikipediaGymEnv(Env):
     """Wikipedia Gym environment."""
 
-    def __init__(self, *args, **kwargs):
-        if "chunk_pattern" not in kwargs:
-            kwargs["chunk_pattern"] = HEADER_CHUNK_PATTERN
+    def __init__(
+        self,
+        *args,
+        wikipedia_graph: WikipediaGraph | None = None,
+        chunk_pattern: str | None = None,
+        chunk_char_limit: int | None = 5000,
+        **kwargs,
+    ):
+        if wikipedia_graph is None:
+            wikipedia_graph = WikipediaGraph(
+                chunk_pattern=chunk_pattern or HEADER_CHUNK_PATTERN,
+                chunk_char_limit=chunk_char_limit,
+            )
         super().__init__(
-            WikipediaGraph(),
+            wikipedia_graph,
             *args,
             **kwargs,
         )
