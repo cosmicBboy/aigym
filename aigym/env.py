@@ -77,7 +77,6 @@ class Env(gym.Env):
         travel_path = [_start_page.url]
         _page = _start_page
 
-        print(f"Initializing target url {n_hops} hops away from {start_url}")
         for retry in range(n_retries):
             try:
                 for i in range(1, n_hops + 1):
@@ -87,17 +86,13 @@ class Env(gym.Env):
                     )
                     travel_path.append(next_page.url)
                     _page = next_page
-                    print(f"Hop {i} to {next_page.url}")
                 break
-            except NoPathsFoundError as exc:
+            except NoPathsFoundError:
                 if retry < n_retries - 1:
-                    print(f"Retry {retry} failed with error: {exc}")
                     travel_path = []
                     _page = _start_page
                     continue
                 raise
-
-        print(f"Target url: {_page.url}")
 
         assert len(travel_path) == len(set(travel_path)), f"Travel path contains duplicates: {travel_path}"
         return _page.url, travel_path
@@ -115,6 +110,7 @@ class Env(gym.Env):
         observation = Observation(
             url=self._state.current_web_page.url,
             context=self._state.current_web_page.context,
+            chunk_names=list(x for x in self._state.current_web_page.page_chunk_map if x is not None),
             target_url=self.target_url,
             next_url=self.travel_map[self._state.current_web_page.url],
             current_chunk=self._state.current_chunk_index + 1,
@@ -125,14 +121,12 @@ class Env(gym.Env):
 
     def reset_manual(
         self,
-        start_url: str,
-        target_url: str,
         travel_path: list[str],
     ):
-        self.start_url = start_url
-        self.target_url = target_url
+        self.start_url = travel_path[0]
+        self.target_url = travel_path[-1]
         self.travel_path = travel_path
-        self.travel_checkpoints = [start_url]
+        self.travel_checkpoints = [self.start_url]
         return self._get_first_observation()
 
     def reset(
@@ -162,7 +156,6 @@ class Env(gym.Env):
         self.start_url = self.travel_path[0]
         self.travel_checkpoints = [self.start_url]
         observation, info = self._get_first_observation()
-        rprint(f"reset current page to: {observation.url}")
         return observation, info
 
     def _current_page_is_target(self):
@@ -174,26 +167,27 @@ class Env(gym.Env):
 
     def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
         """Take a step in the environment."""
-        # TODO: update logic here to handle page chunk urls
         if action.action == "visit_url":
-            self._state.current_web_page = self.graph.get_page(
-                action.url,
-            )
+            self._state.current_web_page = self.graph.get_page(action.url)
+            self._state.current_chunk_key = urllib.parse.urlparse(action.url).fragment
             self._state.current_chunk_index = 0
         else:
             raise ValueError(f"invalid action: {action}")
 
-        current_page = self._state.current_web_page.page_chunks[0]
+        current_page = self._state.current_web_page
+        _next_url = self.travel_map[self.travel_checkpoints[-1]]
 
-        if current_page.url != self.travel_checkpoints[-1]:
-            next_url = self.travel_checkpoints[-1]
-        else:
+        # if the action matches the next url add it to the travel checkpoints
+        if current_page.url == _next_url:
             next_url = self.travel_map[current_page.url]
             self.travel_checkpoints.append(current_page.url)
+        else:
+            next_url = _next_url
 
         observation = Observation(
             url=current_page.url,
             context=current_page.context,
+            chunk_names=list(x for x in current_page.page_chunk_map if x is not None),
             target_url=self.target_url,
             next_url=next_url,
             current_chunk=current_page.content_chunk_index,

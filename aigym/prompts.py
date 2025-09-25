@@ -62,6 +62,7 @@ The Assistant output MUST NOT mention the target url explicitly in the
 <think> tag, and must refer to it in as the "target page". The Assistant output
 MUST contain <think> </think> and <answer> </answer> tags.
 
+Don't use any code fences like ``` or ```json, follow the output format exactly.
 DO NOT pick the <current_url> as the url to visit.
 ONLY OUTPUT one json object in the <answer> tag with no markdown code blocks.
 If the <target_url> is in the <observation> tag, pick the url to complete the maze.

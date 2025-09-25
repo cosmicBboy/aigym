@@ -83,13 +83,14 @@ This will create a `config.yaml` file in the current directory.
 
 ```bash
 PYTHONPATH=. python examples/agent_training_flyte.py \
-    --model_id google/gemma-3-1b-it \
+    --model_id google/gemma-3-4b-it \
     --enable_gradient_checkpointing \
     --n_episodes 250 \
-    --n_hops 3 \
+    --n_hops 5 \
     --n_tries_per_hop 10 \
     --rollout_min_new_tokens 64 \
-    --rollout_max_new_tokens 256 \
-    --group_size 8 \
-    --wandb_project aigym-agent-training
+    --rollout_max_new_tokens 512 \
+    --group_size 4 \
+    --wandb_project aigym-agent-training \
+    --attn_implementation eager
 ```

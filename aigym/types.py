@@ -88,10 +88,6 @@ class WebPage(BaseModel):
         return f"{_url.scheme}://{_url.netloc}/{_url.path}"
 
     @property
-    def content_chunk_map(self) -> dict[str, PageContent]:
-        return {x.header: x for x in self.content_chunks if x.header is not None}
-
-    @property
     def content_chunk_header(self) -> str | None:
         if self.content_chunk_index is None:
             return None
@@ -114,12 +110,17 @@ class WebPage(BaseModel):
             pages.append(WebPage(url=_url, content_chunks=self.content_chunks, content_chunk_index=i))
         return pages
 
+    @property
+    def page_chunk_map(self) -> dict[str, "WebPage"]:
+        return {chunk.content_chunk_header: chunk for chunk in self.page_chunks}
+
 
 class Observation(BaseModel):
     """The observation of the environment."""
 
     url: str
     context: str
+    chunk_names: list[str]
     next_url: str | None
     target_url: str
     current_chunk: int
@@ -130,4 +131,5 @@ class InternalEnvState(BaseModel):
     """The internal state of the environment."""
 
     current_web_page: WebPage | None = None
+    current_chunk_key: str | None = None
     current_chunk_index: int | None = None

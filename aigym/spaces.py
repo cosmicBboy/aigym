@@ -144,8 +144,9 @@ class WebGraph(gym.Space[WebPage]):
         n_chunks = len(page_chunks)
         probs = None
         if n_paths > 0 and n_chunks > 0:
-            path_prob = 0.5 / n_paths
-            chunk_prob = 0.5 / n_chunks
+            # visit other pages more often than other sections of the same page
+            path_prob = 0.75 / n_paths
+            chunk_prob = 0.25 / n_chunks
             probs = [path_prob] * n_paths + [chunk_prob] * n_chunks
 
         if len(sample_from) == 0:
@@ -196,10 +197,17 @@ class WebGraph(gym.Space[WebPage]):
             content_chunks = [
                 x for x in content_chunks if x.header not in ["References", "Footnotes", "See_also", "External_links"]
             ]
-        return WebPage(
+
+        _url_parsed = urllib.parse.urlparse(url)
+        page = WebPage(
             url=str(response.url),
             content_chunks=content_chunks,
+            content_chunk_index=0,
         )
+        if _url_parsed.fragment and _url_parsed.fragment in page.page_chunk_map:
+            page = page.page_chunk_map[_url_parsed.fragment]
+
+        return page
 
 
 class WikipediaGraph(WebGraph):

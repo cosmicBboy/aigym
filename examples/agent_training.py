@@ -55,6 +55,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from peft import LoraConfig, PeftModelForCausalLM, get_peft_model
 from rich import print as rprint
+from rich.console import Console
 from torch.nn.utils import clip_grad_norm_
 from transformers import (
     AutoModelForCausalLM,
@@ -78,7 +79,7 @@ from aigym.types import Action, ActionBatch, Observation, RolloutBatch
 @dataclass
 class TrainingArgs:
     n_episodes: int = 10
-    model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"
+    model_id: str = "google/gemma-3-1b-it"
     ref_model_id: str | None = None
     optim: str = "adamw"
     lr: float = 1e-4
@@ -90,12 +91,14 @@ class TrainingArgs:
     use_lora: bool = True
     use_bnb_quantization: bool = False
     enable_gradient_checkpointing: bool = False
+    attn_implementation: str = "eager"
     n_hops: int = 1
     n_tries_per_hop: int = 10
     rollout_min_new_tokens: int = 64
     rollout_max_new_tokens: int = 128
     rollout_temperature: float = 1.25
-    rollout_top_p: float = 1.0
+    rollout_top_k: int = 64
+    rollout_top_p: float = 0.95
     rollout_repetition_penalty: float = 1.0
     rollout_no_repeat_ngram_size: int = 0
     wandb_project: str = None
@@ -374,8 +377,7 @@ def update_policy(
 
 class PrintLogger:
     def log_environment(self, env: WikipediaGymEnv) -> None:
-        print(f"Environment: {env.travel_map}")
-        print(f"Environment: {env.travel_path}")
+        pprint.print_travel_path(env.travel_path)
 
     def log_actions(self, actions: list[Action]) -> None:
         for i, action in enumerate(actions):
@@ -386,10 +388,16 @@ class PrintLogger:
         pprint.print_context(observation)
 
     def log_metrics(self, metrics: dict[str, float]) -> None:
-        print(f"Metrics: {metrics}")
+        _metrics = {k: float(v) for k, v in metrics.items()}
+        pprint.print_metrics(_metrics)
 
     def log_rewards(self, rewards: torch.Tensor, returns: torch.Tensor) -> None:
-        print(f"Rewards: {rewards.squeeze().tolist()}, Returns: {returns.squeeze().tolist()}")
+        pprint.print_rewards(
+            {
+                "Raw rewards": rewards.squeeze().tolist(),
+                "Returns": returns.squeeze().tolist(),
+            }
+        )
 
     def flush(self) -> None: ...
 
@@ -428,15 +436,17 @@ def main(training_args: TrainingArgs, logger: TrainingLogger | None = None):
     reference_model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
         training_args.ref_model_id or training_args.model_id,
         torch_dtype="auto",
-        quantization_config=bnb_config,
         device_map="auto",
+        attn_implementation=training_args.attn_implementation,
+        quantization_config=bnb_config,
     )
 
     model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
         training_args.model_id,
         torch_dtype="auto",
-        quantization_config=bnb_config,
         device_map="auto",
+        attn_implementation=training_args.attn_implementation,
+        quantization_config=bnb_config,
     )
 
     lora_config = None
@@ -484,6 +494,7 @@ def main(training_args: TrainingArgs, logger: TrainingLogger | None = None):
         min_new_tokens=training_args.rollout_min_new_tokens,
         max_new_tokens=training_args.rollout_max_new_tokens,
         temperature=training_args.rollout_temperature,
+        top_k=training_args.rollout_top_k,
         top_p=training_args.rollout_top_p,
         repetition_penalty=training_args.rollout_repetition_penalty,
         no_repeat_ngram_size=training_args.rollout_no_repeat_ngram_size,
@@ -491,7 +502,7 @@ def main(training_args: TrainingArgs, logger: TrainingLogger | None = None):
         padding_size="left",
         return_attention_mask=True,
         pad_token_id=tokenizer.eos_token_id,
-        stop_strings=["</answer>"],
+        stop_strings=["<end_of_turn>"],
         compile_config=CompileConfig(fullgraph=False),
     )
 
@@ -521,11 +532,11 @@ def main(training_args: TrainingArgs, logger: TrainingLogger | None = None):
     # See: https://www.perplexity.ai/search/can-you-give-me-the-basic-grpo-g3kdNUI4RSmbAtoxi_HcjQ#6
 
     total_cumulative_rewards = 0
+    console = Console(highlight=False)
     for episode in range(1, training_args.n_episodes + 1):
-        print(f"Starting episode {episode}")
+        console.rule(f"▶️ Episode {episode}")
         observation, info = env.reset()
 
-        print(f"Starting to train with {n_tries} steps")
         logger.log_environment(env)
 
         n_steps = 0
@@ -534,7 +545,7 @@ def main(training_args: TrainingArgs, logger: TrainingLogger | None = None):
 
         for step in range(1, n_tries):
             n_steps += 1
-            print(f"step {step}")
+            console.rule(f"Step {step}")
             logger.log_observation(observation)
             action_batch: ActionBatch = agent.act(observation)
 
@@ -547,6 +558,8 @@ def main(training_args: TrainingArgs, logger: TrainingLogger | None = None):
                     continue
                 if action.url == observation.next_url:
                     step_action = action
+                else:
+                    rprint(f"↪️ Action {action.url} doesn't go to the next url {observation.next_url}, skipping")
 
             logger.log_actions(action_batch.actions)
 
@@ -556,9 +569,7 @@ def main(training_args: TrainingArgs, logger: TrainingLogger | None = None):
             logger.log_rewards(rewards, returns)
 
             if (returns == 0).all():
-                print("All returns are 0, skipping update")
                 update_metrics = {}
-                continue
             else:
                 # update the model
                 model, loss, kl, grad_norm = update_policy(
