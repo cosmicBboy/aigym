@@ -17,6 +17,8 @@ from markdownify import markdownify as md
 from aigym.exceptions import NoPathsFoundError
 from aigym.types import PageContent, WebPage
 
+DEFAULT_IGNORE_HEADERS = ["References", "Bibliography", "External_links", "Footnotes", "See_also"]
+
 
 @lru_cache
 def chunk_web_page(
@@ -42,8 +44,12 @@ def chunk_by_pattern(
     content: str,
     pattern: str,
     chunk_char_limit: int | None = None,
+    ignore_headers: list[str] | None = None,
 ) -> list[PageContent]:
     """Chunk a list of strings by a pattern."""
+
+    if ignore_headers is None:
+        ignore_headers = DEFAULT_IGNORE_HEADERS
 
     url_path = urllib.parse.urlparse(url).path
     main_header = url_path.split("/")[-1].strip()
@@ -57,7 +63,7 @@ def chunk_by_pattern(
 
     for i, (header, chunk) in enumerate(zip(_content_chunks[::2], _content_chunks[1::2])):
         if i > 0:
-            header = header.strip().split("\n")[0].strip().replace(" ", "_")
+            header = header.strip().split("\n")[0].strip().replace("### ", "").replace(" ", "_")
         else:
             header = None
 
@@ -71,7 +77,6 @@ def chunk_by_pattern(
                 is_title_content=i == 0,
             )
         )
-
     return chunks
 
 

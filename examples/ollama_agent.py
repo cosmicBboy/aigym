@@ -38,7 +38,7 @@ def main():
     n_tries_per_hop = 5
     n_tries = n_hops * n_tries_per_hop
     env = WikipediaGymEnv(n_hops=n_hops)
-    observation, info = env.reset()
+    # observation, info = env.reset()
     # observation, info = env.reset_manual([
     #     "https://en.wikipedia.org/wiki/Macroglossum_wolframmeyi",
     #     "https://en.wikipedia.org/wiki/Taxonomy_(biology)",
@@ -51,6 +51,15 @@ def main():
     #     "https://en.wikipedia.org/wiki/Atacama_Desert",
     #     "https://en.wikipedia.org/wiki/Calama,_Chile",
     # ])
+    observation, info = env.reset_manual(
+        [
+            "https://en.wikipedia.org/wiki/Atacama_Desert",
+            "https://en.wikipedia.org/wiki/South_America",
+            "https://en.wikipedia.org/wiki/Western_Hemisphere",
+            # "https://en.wikipedia.org/wiki/Atacama_Desert#Republican_period",
+            # "https://en.wikipedia.org/wiki/War_of_the_Pacific",
+        ]
+    )
     # TODO: handle invalid fragments, e.g. https://en.wikipedia.org/wiki/Atacama_Desert#Calama,
     # should fail and not actually visit the page.
 
@@ -60,9 +69,6 @@ def main():
         # pprint.print_context(observation)
         action = agent.act(observation)
         if action.action is None:
-            import ipdb
-
-            ipdb.set_trace()
             rprint(f"No action taken at step {step}")
             continue
         pprint.print_action(action)

@@ -224,12 +224,20 @@ This is a header
 
 This is a paragraph
 
+### This is a subheader
+
+This is a subheader paragraph
+
 This is another header
 ----------------
 
 This is another paragraph
+
+### This is another subheader
+
+This is another paragraph
 """
-HEADER_CHUNK_PATTERN = r"(\n.+\n-+\n)"
+HEADER_CHUNK_PATTERN = r"(\n.+\n-+\n|\n### .+\n)"
 
 
 class WikipediaGymEnv(Env):

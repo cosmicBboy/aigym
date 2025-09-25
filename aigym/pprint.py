@@ -51,12 +51,12 @@ def print_action(action: Action, index: int | None = None):
 
     console = Console(highlight=False)
     if action.action is None:
-        console.print(f"[red]■ Invalid Action [{index}][/red]")
+        console.print(f"[red]■ Invalid Action [{index or 0}][/red]")
         console.print(f"├── Error type: {action.error_type}")
         console.print(f"├── Parse type: {action.parse_type}")
         console.print(f"└── Completion: {completion_text}", end="\n\n")
     else:
-        console.print(f"[orange3]■ Action [{index}][/orange3]")
+        console.print(f"[orange3]■ Action [{index or 0}][/orange3]")
         console.print(f"├── Action: {action.action}")
         console.print(f"├── URL: {action.url}")
         console.print(f"├── Reasoning: {action.reason_summary}")
